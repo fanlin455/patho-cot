@@ -1,0 +1,60 @@
+{
+  "rows": [
+    {
+      "axis": "timestep",
+      "value": 50,
+      "resolution": 64,
+      "auroc": 0.6327,
+      "aupr": 0.6399
+    },
+    {
+      "axis": "timestep",
+      "value": 150,
+      "resolution": 64,
+      "auroc": 0.6668,
+      "aupr": 0.6686
+    },
+    {
+      "axis": "timestep",
+      "value": 300,
+      "resolution": 64,
+      "auroc": 0.6738,
+      "aupr": 0.6773
+    },
+    {
+      "axis": "timestep",
+      "value": 450,
+      "resolution": 64,
+      "auroc": 0.6586,
+      "aupr": 0.6701
+    },
+    {
+      "axis": "timestep",
+      "value": 600,
+      "resolution": 64,
+      "auroc": 0.6446,
+      "aupr": 0.6585
+    },
+    {
+      "axis": "timestep",
+      "value": 800,
+      "resolution": 64,
+      "auroc": 0.6135,
+      "aupr": 0.6426
+    },
+    {
+      "axis": "resolution",
+      "value": 32,
+      "resolution": 32,
+      "auroc": 0.6283,
+      "aupr": 0.6508
+    },
+    {
+      "axis": "main",
+      "value": "150/300/450-avg",
+      "resolution": 64,
+      "auroc": 0.671,
+      "aupr": 0.6753
+    }
+  ]
+}

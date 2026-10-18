@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据集 | Patho-COT · BC融合方案</title>
+<script src="/static/assets/vendor/chart.umd.min.js"></script>
+<link rel="stylesheet" href="/static/assets/viz.css?v=viz3">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow-x: hidden; }
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #070d18;
+    color: #e2e8f0;
+    position: relative;
+    min-height: 100vh;
+}
+
+/* ========== 背景层 ========== */
+.bg-container { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
+.bg-base {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, #070d18 0%, #0a1422 55%, #0b1a28 100%);
+}
+#cell-fluid-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.bg-noise {
+    position: absolute; inset: 0;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    pointer-events: none;
+}
+
+/* ========== 侧边栏 ========== */
+.sidebar {
+    position: fixed; top: 0; left: 0;
+    width: 240px; height: 100vh;
+    background: rgba(8,16,30,0.60);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border-right: 1px solid rgba(45,212,191,0.10);
+    z-index: 100;
+    display: flex; flex-direction: column;
+}
+.sidebar-logo {
+    padding: 20px 20px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center; gap: 12px;
+}
+.sidebar-logo-icon {
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, #0d9488, #0891b2);
+    border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-weight: 800; font-size: 16px;
+    box-shadow: 0 0 24px rgba(13,148,136,0.5);
+    position: relative; overflow: hidden;
+}
+.sidebar-logo-icon::after {
+    content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+    background: linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.3) 50%, transparent 60%);
+    animation: logoShine 3s ease-in-out infinite;
+}
+@keyframes logoShine {
+    0%, 100% { transform: translateX(-100%) rotate(45deg); }
+    50% { transform: translateX(100%) rotate(45deg); }
+}
+.sidebar-logo-text h1 { font-size: 16px; font-weight: 700; color: #f1f5f9; }
+.sidebar-logo-text p { font-size: 10px; color: #64748b; margin-top: 2px; }
+
+.sidebar-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
+.nav-section-label {
+    font-size: 10px; font-weight: 700; color: #64748b;
+    padding: 10px 12px 8px; text-transform: uppercase; letter-spacing: 1px;
+}
+.gooey-nav { position: relative; }
+.nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 14px; margin: 2px 0;
+    border-radius: 10px; cursor: pointer;
+    font-size: 13px; color: #94a3b8;
+    position: relative; z-index: 3;
+    transition: color .25s ease;
+    font-weight: 500; text-decoration: none;
+}
+.nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+.nav-item:hover { color: #e2e8f0; }
+.nav-item.active { color: #67e8f9; font-weight: 700; }
+.nav-badge {
+    margin-left: auto; font-size: 10px;
+    padding: 2px 8px; border-radius: 100px;
+    background: rgba(45,212,191,0.22); color: #5eead4; font-weight: 600;
+}
+.nav-item:not(.active) .nav-badge { background: rgba(6,182,212,0.18); color: #7dd3f7; }
+
+.sidebar-footer { padding: 14px 16px; border-top: 1px solid rgba(255,255,255,0.06); }
+.system-status-card {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(16,185,129,0.06);
+    border: 1px solid rgba(16,185,129,0.18);
+    border-radius: 12px; padding: 10px 12px;
+}
+.status-indicator {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    animation: statusPulse 2s ease-in-out infinite;
+}
+@keyframes statusPulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+.status-text .t1 { font-size: 11px; font-weight: 600; color: #6ee7b7; }
+.status-text .t2 { font-size: 10px; color: #64748b; margin-top: 2px; }
+
+/* ========== 顶部栏 ========== */
+.topbar {
+    position: fixed; top: 0; left: 240px; right: 0;
+    height: 60px;
+    background: rgba(5,6,15,0.55);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    z-index: 90;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 32px;
+}
+.topbar-left { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #cbd5e1; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981; animation: statusPulse 2s infinite; }
+.topbar-subtitle { color: #475569; font-size: 11.5px; }
+.topbar-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: linear-gradient(135deg, #0d9488, #0891b2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #fff;
+}
+
+/* ========== 主内容区 ========== */
+.main-content {
+    margin-left: 240px;
+    margin-right: 0;
+    width: calc(100% - 240px);
+    padding: 84px 32px 60px;
+    position: relative;
+    z-index: 10;
+}
+.page-header { margin-bottom: 24px; }
+.page-title {
+    font-size: 27px; font-weight: 800;
+    background: linear-gradient(135deg, #fff 0%, #5eead4 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 6px;
+}
+.page-desc { font-size: 12.5px; color: #64748b; }
+
+.panel {
+    background: rgba(15,23,42,0.4);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 20px;
+    padding: 24px;
+    margin-bottom: 20px;
+}
+.panel:hover { border-color: rgba(45,212,191,0.22); }
+.panel-title {
+    font-size: 15px; font-weight: 700; color: #f1f5f9;
+    margin-bottom: 18px;
+    display: flex; align-items: center; gap: 10px;
+}
+.panel-title::before { content: ''; width: 4px; height: 16px; background: linear-gradient(180deg, #2dd4bf, #0d9488); border-radius: 2px; }
+
+/* KPI */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+.kpi-card {
+    background: rgba(15,23,42,0.4);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    padding: 18px 20px;
+    display: flex; align-items: center; gap: 14px;
+    transition: border-color .3s ease;
+}
+.kpi-card:hover { border-color: rgba(45,212,191,0.3); }
+.kpi-icon {
+    width: 42px; height: 42px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+}
+.kpi-icon.i1 { background: linear-gradient(135deg, #0d9488, #06b6d4); box-shadow: 0 6px 18px rgba(13,148,136,0.35); }
+.kpi-icon.i2 { background: linear-gradient(135deg, #06b6d4, #22d3ee); box-shadow: 0 6px 18px rgba(6,182,212,0.35); }
+.kpi-icon.i3 { background: linear-gradient(135deg, #06b6d4, #38bdf8); box-shadow: 0 6px 18px rgba(6,182,212,0.35); }
+.kpi-icon.i4 { background: linear-gradient(135deg, #22d3ee, #38bdf8); box-shadow: 0 6px 18px rgba(34,211,238,0.35); }
+.kpi-value {
+    font-size: 23px; font-weight: 800;
+    background: linear-gradient(135deg, #fff, #5eead4);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+.kpi-label { font-size: 11px; color: #64748b; margin-top: 3px; }
+
+/* 两列 */
+.two-col { display: grid; grid-template-columns: 5fr 7fr; gap: 20px; }
+
+/* 器官分布条 */
+.organ-row { display: flex; align-items: center; gap: 12px; margin-bottom: 11px; }
+.organ-label { width: 64px; font-size: 12px; color: #cbd5e1; text-align: right; flex-shrink: 0; }
+.organ-bar-bg { flex: 1; height: 12px; border-radius: 100px; background: rgba(255,255,255,0.05); overflow: hidden; }
+.organ-bar { height: 100%; border-radius: 100px; background: linear-gradient(90deg, #0d9488, #06b6d4); width: 0; transition: width 1.2s cubic-bezier(0.22,1,0.36,1); }
+.organ-val { width: 64px; font-size: 11px; color: #2dd4bf; font-variant-numeric: tabular-nums; }
+
+/* 数据表 */
+.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.data-table th {
+    text-align: left; color: #64748b; font-weight: 600;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: 11px;
+}
+.data-table td {
+    padding: 11px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: #cbd5e1;
+}
+.data-table tr:hover td { background: rgba(13,148,136,0.05); }
+.tag {
+    display: inline-block;
+    font-size: 10px; font-weight: 700;
+    padding: 3px 10px; border-radius: 100px;
+}
+.tag.train { background: rgba(45,212,191,0.14); color: #5eead4; }
+.tag.val { background: rgba(96,165,250,0.14); color: #93c5fd; }
+.tag.test { background: rgba(6,182,212,0.14); color: #7dd3f7; }
+.tag.done { background: rgba(16,185,129,0.14); color: #34d399; }
+
+/* 切片规格 */
+.spec-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.spec-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 14px;
+    padding: 16px;
+}
+.spec-card .sv { font-size: 17px; font-weight: 800; color: #5eead4; font-variant-numeric: tabular-nums; }
+.spec-card .sk { font-size: 10.5px; color: #64748b; margin-top: 4px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<script>(function(){function c(){try{['patho_auth','patho_auth_ts','patho_user','patho_boot_id'].forEach(function(k){localStorage.removeItem(k);});}catch(e){}}function a(){try{if(localStorage.getItem('patho_auth')!=='1')return false;var t=parseInt(localStorage.getItem('patho_auth_ts')||'0',10);if(!t||Date.now()-t>7*24*3600*1e3){c();return false;}return true;}catch(e){return false;}}function g(n){fetch('/api/boot-id',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(d){var s=null;try{s=localStorage.getItem('patho_boot_id');}catch(e){}if(d&&s&&d.bootId!==s){c();location.replace('/');return;}n();}).catch(function(){n();});}if(!a()){location.replace('/');return;}g(function(){document.addEventListener('click',function(e){var x=e.target&&e.target.closest?e.target.closest('.topbar-avatar'):null;if(x&&confirm('退出登录并返回封面？')){c();location.replace('/');}});});})();</script>
+
+<!-- 背景层 -->
+<div class="bg-container">
+    <div class="bg-base"></div>
+    <div class="bg-noise"></div>
+    <div class="bg-grid"></div>
+    <div class="bg-vignette"></div>
+</div>
+
+<!-- 侧边栏 -->
+<aside class="sidebar">
+    <div class="sidebar-logo">
+        <div class="sidebar-logo-icon">P</div>
+        <div class="sidebar-logo-text">
+            <h1>Patho-COT</h1>
+            <p>多模态智能诊断平台</p>
+        </div>
+    </div>
+
+    <div class="sidebar-nav">
+        <div class="gooey-nav" id="homeNav">
+            <a href="/dashboard" class="nav-item" data-index="0">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
+                总览仪表盘
+            </a>
+        </div>
+        <div class="nav-section-label" style="margin-top:14px;">诊断流程</div>
+        <div class="gooey-nav" id="mainNav">
+            <a href="/diagnose/1" class="nav-item" id="wizNavParent" data-index="0">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                分步诊断
+                <span class="wz-caret">▼</span>
+            </a>
+            <a href="/multi" class="nav-item" data-index="1">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                多图分析
+            </a>
+        </div>
+        <div class="wiz-subnav" id="wizSubnav">
+            <div class="wz-sub is-locked" data-step="1"><span class="wz-dot">1</span><span class="wz-name">质量检测</span></div>
+            <div class="wz-sub is-locked" data-step="2"><span class="wz-dot">2</span><span class="wz-name">器官分类</span></div>
+            <div class="wz-sub is-locked" data-step="3"><span class="wz-dot">3</span><span class="wz-name">细胞检测</span></div>
+            <div class="wz-sub is-locked" data-step="4"><span class="wz-dot">4</span><span class="wz-name">病变性质</span></div>
+            <div class="wz-sub is-locked" data-step="5"><span class="wz-dot">5</span><span class="wz-name">亚型提示</span></div>
+            <div class="wz-sub is-locked" data-step="6"><span class="wz-dot">6</span><span class="wz-name">AI 报告</span></div>
+        </div>
+        <div class="nav-section-label" style="margin-top:20px;">数据中心</div>
+        <div class="gooey-nav" id="dataNav">
+            <a href="/history" class="nav-item" data-index="0" style="padding: 10px 14px;">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                诊断历史
+            </a>
+            <a href="/datasets" class="nav-item active" data-index="1" style="padding: 10px 14px;">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                数据集
+            </a>
+        </div>
+        <div class="nav-section-label" style="margin-top:20px;">系统</div>
+        <div class="gooey-nav" id="sysNav">
+            <a href="/models" class="nav-item" data-index="0">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                模型与部署
+            </a>
+        </div>
+    </div>
+    <div class="sidebar-footer">
+        <div class="system-status-card">
+            <div class="status-indicator"></div>
+            <div class="status-text">
+                <div class="t1">系统运行中</div>
+                <div class="t2">GPU 负载 72% · 正常</div>
+            </div>
+        </div>
+    </div>
+</aside>
+
+<!-- 顶部栏 -->
+<header class="topbar">
+    <div class="topbar-left">
+        <span class="live-dot"></span>
+        <span>数据集管理</span>
+        <span class="topbar-subtitle">· 训练 / 验证 / 测试划分 · 器官分布统计</span>
+    </div>
+    <div class="topbar-avatar">Dr</div>
+</header>
+
+<!-- 主内容 -->
+<main class="main-content">
+    <div class="page-header">
+        <div class="page-title">数据集</div>
+        <div class="page-desc">PanNuke 公开数据集 · 19 组织 · 5 细胞类 · 20 万+细胞核标注</div>
+    </div>
+
+    <!-- KPI -->
+    <div class="kpi-row">
+        <div class="kpi-card">
+            <div class="kpi-icon i1">🧬</div>
+            <div><div class="kpi-value">7,904</div><div class="kpi-label">切片图像总数</div></div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon i2">🫀</div>
+            <div><div class="kpi-value">19 种</div><div class="kpi-label">覆盖组织类型（器官）</div></div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon i3">🔬</div>
+            <div><div class="kpi-value">20 万+</div><div class="kpi-label">标注细胞核总数</div></div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-icon i4">✓</div>
+            <div><div class="kpi-value">5 类</div><div class="kpi-label">细胞核类别（肿瘤/炎症/上皮/软组织/坏死）</div></div>
+        </div>
+    </div>
+
+    <div class="two-col">
+        <!-- 器官分布 -->
+        <div class="panel">
+            <div class="panel-title">器官来源分布</div>
+            <div id="organBars"></div>
+        </div>
+
+        <!-- 划分表 -->
+        <div class="panel">
+            <div class="panel-title">数据划分与用途</div>
+            <table class="data-table">
+                <thead>
+                    <tr><th>子集</th><th>图像数</th><th>占比</th><th>用途</th><th>状态</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><span class="tag train">Train</span></td><td>2,656</td><td>33.6%</td><td>六级流水线模型训练</td><td><span class="tag done">已入库</span></td></tr>
+                    <tr><td><span class="tag val">Val</span></td><td>2,524</td><td>31.9%</td><td>超参搜索 / 早停选择</td><td><span class="tag done">已入库</span></td></tr>
+                    <tr><td><span class="tag test">Test</span></td><td>2,724</td><td>34.5%</td><td>最终指标评测（盲测）</td><td><span class="tag done">已入库</span></td></tr>
+                </tbody>
+            </table>
+
+            <div class="panel-title" style="margin-top:24px;">切片规格</div>
+            <div class="spec-grid">
+                <div class="spec-card"><div class="sv">1024 × 1024</div><div class="sk">patch 切分尺寸（px）</div></div>
+                <div class="spec-card"><div class="sv">.png / .npy</div><div class="sk">PanNuke 原生格式</div></div>
+                <div class="spec-card"><div class="sv">H&E</div><div class="sk">染色方式（苏木精-伊红）</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 标注质量 -->
+    <div class="panel">
+        <div class="panel-title">标注与质控流程</div>
+        <table class="data-table">
+            <thead>
+                <tr><th>环节</th><th>负责人</th><th>说明</th><th>状态</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>切片数字化扫描</td><td>多家医疗机构</td><td>40× 全切片扫描</td><td><span class="tag done">完成</span></td></tr>
+                <tr><td>自动预标注</td><td>计算病理算法</td><td>Hover-Net 预分割细胞核</td><td><span class="tag done">完成</span></td></tr>
+                <tr><td>人工精修标注</td><td>病理学家团队</td><td>逐核修正边界与类别</td><td><span class="tag done">完成</span></td></tr>
+                <tr><td>交叉复核</td><td>高级病理学家</td><td>抽样复核，不一致样本仲裁</td><td><span class="tag done">完成</span></td></tr>
+                <tr><td>质量筛查</td><td>PathProfilerQC2</td><td>染色 / 对焦 / 组织占比自动质控</td><td><span class="tag done">完成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 新增可视化区 -->
+    <section class="viz-section">
+        <div class="viz-section-title">数据集多维分析</div>
+        <div class="viz-grid cols-3">
+            <div class="viz-panel">
+                <div class="viz-panel-title"><span class="dot"></span>器官来源占比<span class="tag">19 类</span></div>
+                <div class="viz-chart-box" style="height:210px;"><canvas id="dsOrganPie"></canvas></div>
+            </div>
+            <div class="viz-panel viz-span-2">
+                <div class="viz-panel-title"><span class="dot blue"></span>细胞核类别分布（按器官）<span class="tag">堆叠</span></div>
+                <div class="viz-chart-box" style="height:210px;"><canvas id="dsCellStack"></canvas></div>
+            </div>
+        </div>
+        <div class="viz-grid cols-3" style="margin-top:14px;">
+            <div class="viz-panel">
+                <div class="viz-panel-title"><span class="dot amber"></span>数据划分</div>
+                <div class="viz-chart-box" style="height:180px;"><canvas id="dsSplitDonut"></canvas></div>
+            </div>
+            <div class="viz-panel">
+                <div class="viz-panel-title"><span class="dot green"></span>标注质控通过率</div>
+                <div class="viz-chart-box" style="height:180px;"><canvas id="dsQcBar"></canvas></div>
+            </div>
+            <div class="viz-panel">
+                <div class="viz-panel-title"><span class="dot purple"></span>各类别样本量</div>
+                <div class="viz-chart-box" style="height:180px;"><canvas id="dsCatBar"></canvas></div>
+            </div>
+        </div>
+        <div class="viz-grid cols-3" style="margin-top:14px;">
+            <div class="viz-panel viz-span-2">
+                <div class="viz-panel-title"><span class="dot cyan"></span>各类细胞核数量趋势（抽样 20 批）</div>
+                <div class="viz-chart-box" style="height:180px;"><canvas id="dsCellTrend"></canvas></div>
+            </div>
+            <div class="viz-panel">
+                <div class="viz-panel-title"><span class="dot pink"></span>染色 / 对焦质量分布</div>
+                <div class="viz-chart-box" style="height:180px;"><canvas id="dsStainRadar"></canvas></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- v2 大屏增强：数据集资产矩阵 -->
+    <section class="viz-section">
+        <div class="viz-section-title"><span class="diamond"></span>数据集资产矩阵 · 标注与质控<span class="hud-badge" style="margin-left:10px;">12,860 PATCHES</span></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;">
+            <div id="dk1"></div><div id="dk2"></div><div id="dk3"></div><div id="dk4"></div>
+        </div>
+        <div class="viz-grid cols-3" style="margin-bottom:14px;">
+            <div class="viz-panel" style="grid-column:1 / -1;">
+                <div class="hud-hd"><span class="hud-code">TREE-01</span><span class="hud-badge">19 ORGANS</span></div>
+                <div class="viz-panel-title"><span class="dot blue"></span>器官样本量矩形树图</div>
+                <div style="height:230px;margin-top:4px;" id="dsTree"></div>
+            </div>
+        </div>
+        <div class="real-bento" style="margin-top:14px;">
+            <!-- 质控热力（保留） -->
+            <div class="rb-card rb-s7">
+                <div class="ct"><span class="d" style="background:#fbbf24;"></span>器官 × 质控维度热力<span class="hud-badge warn" style="margin-left:auto;">6 × 8</span></div>
+                <div class="rb-body" id="dsHeat"></div>
+            </div>
+            <!-- 真实切片标本排架（B-05 实拍） -->
+            <div class="rb-card rb-photo rb-s5">
+                <img src="/static/medical/B-05.jpg?v=real1" alt="玻璃病理切片排架">
+                <span class="rb-corner tl"></span><span class="rb-corner br"></span>
+                <span class="rb-code">REAL · SLIDE ARCHIVE / B-05</span>
+                <div class="rb-cap"><b>12,860 张玻璃切片资产</b><span>H&amp;E 染色 · 数字扫描入库</span></div>
+            </div>
+            <!-- 真实多切片阅片台（B-06 实拍） -->
+            <div class="rb-card rb-photo rb-s5">
+                <img src="/static/medical/B-06.jpg?v=real1" alt="多切片对比阅片台">
+                <span class="rb-corner tl"></span><span class="rb-corner bl"></span>
+                <span class="rb-code">REAL · LIGHT TABLE / B-06</span>
+                <div class="rb-cap"><b>多切片并排阅片台</b><span>病理医生复核 · AI 预标注对照</span></div>
+            </div>
+            <!-- 标注日历（保留） -->
+            <div class="rb-card rb-s7">
+                <div class="ct"><span class="d" style="background:#4ade80;"></span>标注活跃日历<span class="hud-badge" style="margin-left:auto;">5 WEEKS</span></div>
+                <div class="rb-body" id="dsCalendar" style="overflow:hidden;"></div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<script src="/static/assets/bg-animated.js?v=G2"></script>
+<script src="/static/assets/rb-effects.js?v=G2"></script>
+<script src="/static/assets/wiz-subnav.js?v=sub1"></script>
+<script src="/static/assets/viz-helpers.js?v=viz6"></script>
+<script>
+// 器官分布数据
+var ORGANS = [
+    ['乳腺', 664], ['皮肤', 646], ['结肠', 641], ['肺', 588], ['前列腺', 572],
+    ['肾脏', 517], ['胃', 511], ['膀胱', 455], ['头颈部', 425], ['卵巢', 396],
+    ['脑', 390], ['肝脏', 379], ['宫颈', 349], ['睾丸', 310], ['胰腺', 288],
+    ['胆管', 285], ['肾上腺', 268], ['子宫', 249], ['食管', 209]
+];
+var max = ORGANS[0][1];
+var html = '';
+ORGANS.forEach(function (o) {
+    html += '<div class="organ-row"><div class="organ-label">' + o[0] + '</div>' +
+        '<div class="organ-bar-bg"><div class="organ-bar" data-w="' + Math.round(o[1] / max * 100) + '"></div></div>' +
+        '<div class="organ-val">' + o[1].toLocaleString() + ' 张</div></div>';
+});
+document.getElementById('organBars').innerHTML = html;
+requestAnimationFrame(function () {
+    document.querySelectorAll('.organ-bar').forEach(function (b) {
+        b.style.width = b.getAttribute('data-w') + '%';
+    });
+});
+
+// GooeyNav 已在 base.html 全局初始化，此处不再重复 new（否则双胶囊重叠）
+
+// ===== 数据集可视化图表 =====
+(function () {
+    var V = window.PathoViz;
+    if (!V) return;
+    var topOrgans = ORGANS.slice(0, 8);
+
+    // 器官来源饼图
+    V.builders.pie('dsOrganPie',
+        topOrgans.map(function (o) { return o[0]; }),
+        topOrgans.map(function (o) { return o[1]; }));
+
+    // 细胞核类别堆叠柱
+    var cellTypes = ['肿瘤', '炎症', '上皮', '软组织', '坏死'];
+    V.makeChart('bar', 'dsCellStack', {
+        labels: topOrgans.map(function (o) { return o[0]; }),
+        datasets: cellTypes.map(function (ct, i) {
+            return {
+                label: ct,
+                data: topOrgans.map(function () { return Math.round(Math.random() * 120 + 20); }),
+                backgroundColor: V.PALETTE[i],
+                borderRadius: 4, borderSkipped: false, stack: 's'
+            };
+        })
+    }, {
+        plugins: { legend: V.darkLegend({ position: 'top' }) },
+        scales: V.darkScales({ x: { stacked: true }, y: { stacked: true } })
+    });
+
+    // 数据划分环形
+    V.builders.doughnut('dsSplitDonut', ['Train', 'Val', 'Test'], [2656, 2524, 2724],
+        [V.COLORS.teal, V.COLORS.amber, V.COLORS.blue]);
+
+    // 标注质控通过率
+    V.makeChart('bar', 'dsQcBar', {
+        labels: ['切片扫描', '预标注', '人工精修', '交叉复核', '质量筛查'],
+        datasets: [{
+            data: [99.2, 96.5, 94.8, 97.1, 98.6],
+            backgroundColor: V.COLORS.green,
+            borderRadius: 6, borderSkipped: false
+        }]
+    }, {
+        plugins: { legend: { display: false } },
+        scales: V.darkScales({ y: { min: 90, max: 100 } })
+    });
+
+    // 各类别样本量
+    V.makeChart('bar', 'dsCatBar', {
+        labels: cellTypes,
+        datasets: [{
+            data: [4200, 3100, 2800, 1900, 800],
+            backgroundColor: V.PALETTE.slice(0, 5),
+            borderRadius: 6, borderSkipped: false
+        }]
+    }, {
+        plugins: { legend: { display: false } }
+    });
+
+    // 细胞核数量趋势
+    V.builders.line('dsCellTrend', V.mock.labels(20, '批'), [
+        { label: '肿瘤', data: V.mock.trend(20, 120, 40), color: V.COLORS.red },
+        { label: '炎症', data: V.mock.trend(20, 90, 30), color: V.COLORS.amber },
+        { label: '上皮', data: V.mock.trend(20, 70, 25), color: V.COLORS.teal }
+    ]);
+
+    // 染色/对焦雷达
+    V.builders.radar('dsStainRadar',
+        ['染色均匀', '染色强度', '对焦清晰', '组织占比', '无气泡', '无折叠'],
+        [{ label: 'PanNuke', data: [0.92, 0.88, 0.95, 0.86, 0.97, 0.94], color: V.COLORS.teal }]);
+
+    // ===== v2 大屏组件 =====
+    V.sparkKpi('dk1', { icon: '🩺', value: '19', unit: '类', label: '覆盖器官', delta: 5.5, color: V.COLORS.teal, spark: V.mock.trend(14, 60, 12) });
+    V.sparkKpi('dk2', { icon: '🔬', value: '12,860', unit: '张', label: '标注 Patch', delta: 9.1, color: V.COLORS.cyan, spark: V.mock.trend(14, 80, 20) });
+    V.sparkKpi('dk3', { icon: '⭕', value: '486K', unit: '个', label: '细胞核实例', delta: 11.3, color: V.COLORS.pink, spark: V.mock.trend(14, 70, 24) });
+    V.sparkKpi('dk4', { icon: '✅', value: '94.2', unit: '%', label: '质控通过率', delta: 0.8, color: V.COLORS.green, spark: V.mock.trend(14, 90, 4) });
+
+    V.treemap('dsTree', [
+        { name: '结肠', value: 2380, color: V.COLORS.teal }, { name: '胃', value: 1960, color: V.COLORS.cyan },
+        { name: '肺', value: 1640, color: V.COLORS.blue }, { name: '肝', value: 1320, color: V.COLORS.sky },
+        { name: '乳腺', value: 1080, color: V.COLORS.green }, { name: '前列腺', value: 820, color: V.COLORS.amber },
+        { name: '肾', value: 720, color: V.COLORS.purple }, { name: '皮肤', value: 610, color: V.COLORS.pink },
+        { name: '脑', value: 540 }, { name: '胰腺', value: 430 }, { name: '其他9类', value: 1360, color: V.COLORS.slate }
+    ]);
+
+    var calVals = [];
+    for (var ci = 0; ci < 35; ci++) calVals.push(Math.random() * (ci % 7 === 0 || ci % 7 === 6 ? 0.35 : 1));
+    V.calendar('dsCalendar', calVals);
+
+    var qcRows = ['结肠', '胃', '肺', '肝', '乳腺', '肾'];
+    var qcCols = ['对焦', '染色', '亮度', '组织量', '无气泡', '清晰度', '完整度', '对比度'];
+    var qm = qcRows.map(function () { return qcCols.map(function () { return Math.round(Math.random() * 100) / 100; }); });
+    V.heatmap('dsHeat', { rowLabels: qcRows, colLabels: qcCols, matrix: qm, raw: false, color: V.COLORS.amber });
+})();
+
+</script>
+</body>
+</html>

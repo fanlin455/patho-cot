@@ -1,0 +1,42 @@
+# ============================================================
+# Patho-COT 病理智能诊断系统 配置文件（随包发布版）
+# ------------------------------------------------------------
+# 模型权重与本文件上一级的文件夹同目录，model_root 留空即可自动发现，
+# 无需改成任何绝对路径；换电脑 / 换目录都不用改。
+# ============================================================
+
+# 模型资产根目录（留空=自动发现；也可用环境变量 PATHO_COT_MODEL_ROOT 覆盖）
+paths:
+  model_root: ""
+
+# 器官分类骨干：vit=ViT-B/16；phikon=冻结 Phikon-v2 + 线性头（准确率更高）
+organ:
+  backbone: phikon
+
+# 病变性质模型：gcn=图卷积；phikon=冻结 Phikon-v2 + 线性头（AUC 更高）
+nature:
+  model: phikon
+
+# 扩散异常检测（Step 4 附带输出，实验性参考，不参与诊断结论）
+anomaly:
+  enabled: true
+  timesteps:
+    - 300
+
+# 质量检测（Step 1）判定分数线
+qc:
+  usability_threshold: 0.6
+  focus_threshold: 4.0
+  stain_threshold: 4.0
+  tissue_ratio_min_hint: 0.01
+
+# 细胞检测（Step 3）
+detection:
+  conf_threshold: 0.15
+  min_side: 512
+  max_side: 1024
+  enable_sam: false          # 8GB 显存建议保持 false（随包未附带 SAM 大权重）
+
+# 模型加载策略：true=常驻显存（每步秒开）；显存紧张可改 false
+models:
+  keep_loaded: true

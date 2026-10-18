@@ -1,0 +1,106 @@
+/* ============================================================
+   Patho-COT 分步诊断独立页面共享样式（6 个 diagnose 页共用）
+   ============================================================ */
+
+/* 步骤条节点 */
+.step-node { cursor: pointer; user-select: none; }
+.step-node.locked { cursor: not-allowed; }
+
+/* 加载转圈 */
+.spinner {
+    border: 3px solid rgba(255,255,255,.18);
+    border-top-color: #38bdf8;
+    border-radius: 50%; width: 34px; height: 34px;
+    animation: pw-spin .8s linear infinite;
+}
+@keyframes pw-spin { to { transform: rotate(360deg); } }
+
+/* 各步骤卡片头颜色 = 步骤主题色（非紫色） */
+#room1 .spotlight, #panel1 .spotlight { --spotlight-color: rgba(13,148,136,.20); }
+#panel2 .spotlight { --spotlight-color: rgba(37,99,235,.20); }
+#panel3 .spotlight { --spotlight-color: rgba(220,38,38,.16); }
+#panel4 .spotlight { --spotlight-color: rgba(8,145,178,.18); }
+#panel5 .spotlight { --spotlight-color: rgba(217,119,6,.20); }
+#panel6 .spotlight { --spotlight-color: rgba(13,148,136,.20); }
+
+/* 当前任务信息条 */
+#taskChip {
+    font-size: 12.5px; color: #94a3b8;
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 10px; padding: 8px 14px; margin-bottom: 14px;
+}
+#taskChip a { color: #38bdf8; }
+
+/* 质检未通过全局警示（深色底上可读） */
+#qcFailBanner {
+    border-radius: 12px; border: 1px solid rgba(245,158,11,.35);
+    background: rgba(245,158,11,.10); padding: 14px 16px;
+    font-size: 13.5px; color: #fcd34d; margin-bottom: 18px;
+}
+
+/* 空态 / 就绪态卡片 */
+.wz-note { text-align: center; padding: 56px 24px; line-height: 1.9; }
+.wz-note .btn-primary { text-decoration: none; }
+
+/* 步骤3：检测结果 / 3D 浏览器 标签页 */
+.wz-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.wz-tab {
+    padding: 9px 18px; border-radius: 100px; font-size: 13px; font-weight: 600;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+    color: #94a3b8; cursor: pointer; transition: all .2s ease;
+}
+.wz-tab:hover { color: #e2e8f0; background: rgba(255,255,255,.10); }
+.wz-tab.tab-active {
+    background: linear-gradient(135deg, #0d9488, #0891b2);
+    color: #fff; border-color: transparent;
+    box-shadow: 0 6px 18px rgba(13,148,136,.35);
+}
+#explorerFrame { width: 100%; height: 72vh; min-height: 480px; border: 0; border-radius: 12px; background: #05060f; }
+.explorer-hint { font-size: 12px; color: #64748b; margin-top: 8px; line-height: 1.7; }
+
+/* AI 报告排版（深色卡片内） */
+#reportContent { line-height: 1.7; }
+#reportContent h2 { font-size: 1.15rem; font-weight: 700; margin: 1.1rem 0 .5rem; padding-bottom: .25rem; border-bottom: 1px solid rgba(255,255,255,.12); }
+#reportContent h3 { font-size: 1.02rem; font-weight: 600; margin: .9rem 0 .4rem; }
+#reportContent p { margin-bottom: .5rem; }
+#reportContent strong { font-weight: 600; color: #f1f5f9; }
+#reportContent ul { padding-left: 1.2rem; margin: .3rem 0; list-style: disc; }
+#reportContent li { margin-bottom: .15rem; }
+#reportContent table { width: 100%; border-collapse: collapse; margin: .5rem 0; font-size: .875rem; }
+#reportContent th { background: rgba(255,255,255,.06); font-weight: 600; text-align: left; padding: .4rem .75rem; border-bottom: 1px solid rgba(255,255,255,.2); }
+#reportContent td { padding: .35rem .75rem; border-bottom: 1px solid rgba(255,255,255,.08); }
+
+/* 打印：只留报告/结果主体 */
+@media print {
+    .step-node, .step-connector { color: #000 !important; }
+}
+
+/* ============================================================
+   六步向导：立方体翻页转场（方向感知 3D cube turn）
+   纯手动 MPA 方案（跨浏览器一致）：
+   - 出场：JS 给 <html> 加 data-cube-leave，主内容区翻转 0.54s 后再导航
+   - 入场：新文档 head 引导脚本第一帧前加 data-cube-enter，主内容区反向翻入
+   - 侧边栏 / 顶栏 / 动态背景全程静止，只有主内容区像立方体相邻面一样翻转
+   ============================================================ */
+html[data-cube-leave],
+html[data-cube-enter] { perspective: 1700px; }
+html[data-cube-leave] main.main-content,
+html[data-cube-enter] main.main-content {
+    transform-style: preserve-3d; backface-visibility: hidden;
+    animation-duration: .54s; animation-timing-function: cubic-bezier(.22,.61,.36,1);
+    animation-fill-mode: both;
+}
+html[data-cube-leave="fwd"] main.main-content { animation-name: wzCubeOutL; }
+html[data-cube-leave="back"] main.main-content { animation-name: wzCubeOutR; }
+html[data-cube-enter="fwd"] main.main-content { animation-name: wzCubeInR; }
+html[data-cube-enter="back"] main.main-content { animation-name: wzCubeInL; }
+
+@keyframes wzCubeOutL { from { transform: rotateY(0);      opacity: 1; } to { transform: rotateY(-90deg); opacity: .15; } }
+@keyframes wzCubeOutR { from { transform: rotateY(0);      opacity: 1; } to { transform: rotateY(90deg);  opacity: .15; } }
+@keyframes wzCubeInR  { from { transform: rotateY(90deg);  opacity: .15; } to { transform: rotateY(0);     opacity: 1; } }
+@keyframes wzCubeInL  { from { transform: rotateY(-90deg); opacity: .15; } to { transform: rotateY(0);     opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+    html[data-cube-leave] main.main-content,
+    html[data-cube-enter] main.main-content { animation: none; }
+}

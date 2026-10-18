@@ -1,0 +1,259 @@
+﻿﻿{% extends "base.html" %}
+{% set active_page = "history" %}
+
+{% block title %}历史记录 - 智析病理{% endblock %}
+{% block header_title %}历史记录{% endblock %}
+{% block header_subtitle %}查看过往诊断结果，点击卡片查看完整详情{% endblock %}
+
+{% block content %}
+
+<style>
+    /* 历史卡片：降低透明度，更实一些 */
+    #gooHistoryGrid > a {
+        background: rgba(255,255,255,.15) !important;
+        border-color: rgba(255,255,255,.16) !important;
+    }
+</style>
+
+{% if records %}
+<div id="gooHistoryGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    {% for r in records %}
+    <a href="/history/{{ r.id }}" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md hover:border-blue-300 transition-all block">
+        <div class="flex items-center justify-between gap-2">
+            <span class="text-xs text-gray-400">{{ r.created_at }}</span>
+            {% if r.summary.mode == 'multi' %}
+            <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">多 patch</span>
+            {% endif %}
+        </div>
+        <div class="mt-2 text-sm text-gray-500 truncate" title="{{ r.filename }}">📷 {{ r.filename }}</div>
+        <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div class="text-gray-500">器官：<span class="font-semibold text-gray-900">{{ r.summary.organ_cn or '-' }}</span></div>
+            <div class="text-gray-500">性质：
+                {% if r.summary.nature_cn %}
+                <span class="font-semibold {{ 'text-red-600' if r.summary.nature == 'Abnormal' else 'text-green-600' }}">{{ r.summary.nature_cn }}</span>
+                {% else %}<span class="text-gray-400">-</span>{% endif %}
+            </div>
+            <div class="text-gray-500">亚型：<span class="font-semibold text-gray-900">{{ r.summary.subtype_cn or '-' }}</span></div>
+            <div class="text-gray-500">质检：
+                {% if r.summary.usable %}
+                <span class="font-semibold {{ 'text-green-600' if r.summary.usable == '通过' else 'text-yellow-600' }}">{{ r.summary.usable }}</span>
+                {% else %}<span class="text-gray-400">-</span>{% endif %}
+            </div>
+        </div>
+        {% if r.has_report %}
+        <div class="mt-3 text-xs" style="color:#5eead4;">📄 已生成 AI 诊断报告</div>
+        {% endif %}
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+    <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    <h3 class="text-lg font-semibold text-gray-600 mb-2">还没有历史记录</h3>
+    <p id="gooSmartLink" class="text-sm text-gray-400">去 <a href="/diagnose/1" class="text-blue-600 hover:underline font-medium">分步诊断</a> 页面上传一张病理图分析一次吧。</p>
+</div>
+{% endif %}
+
+<!-- 新增可视化区 -->
+<section class="viz-section">
+    <div class="viz-section-title">历史诊断数据分析</div>
+    <div class="viz-kpi-grid">
+        <div class="viz-kpi"><div class="icon">📋</div><div><div class="val" id="hKpiTotal">0</div><div class="label">总诊断次数</div></div></div>
+        <div class="viz-kpi"><div class="icon">🟢</div><div><div class="val" id="hKpiNormal">0</div><div class="label">Normal 例数</div></div></div>
+        <div class="viz-kpi"><div class="icon">🔴</div><div><div class="val" id="hKpiAbnormal">0</div><div class="label">Abnormal 例数</div></div>
+        <div class="viz-kpi"><div class="icon">⚡</div><div><div class="val" id="hKpiAvg">0</div><div class="label">平均耗时(秒)</div></div></div>
+    </div>
+    <div class="viz-grid cols-3">
+        <div class="viz-panel viz-span-2">
+            <div class="viz-panel-title"><span class="dot"></span>诊断量与准确率趋势<span class="tag">近30天</span></div>
+            <div class="viz-chart-box" style="height:210px;"><canvas id="hTrend"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot blue"></span>器官分布</div>
+            <div class="viz-chart-box" style="height:210px;"><canvas id="hOrgan"></canvas></div>
+        </div>
+    </div>
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot amber"></span>病变性质分布</div>
+            <div class="viz-chart-box" style="height:190px;"><canvas id="hNature"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot green"></span>亚型分布 Top-7</div>
+            <div class="viz-chart-box" style="height:190px;"><canvas id="hSubtype"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot purple"></span>单图 vs 多图</div>
+            <div class="viz-chart-box" style="height:190px;"><canvas id="hMode"></canvas></div>
+        </div>
+    </div>
+</section>
+
+<!-- v2 大屏增强：诊断档案中心 -->
+<section class="viz-section">
+    <div class="viz-section-title"><span class="diamond"></span>诊断档案中心 · 时序与检索<span class="hud-badge" style="margin-left:10px;">2,847 RECORDS</span></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;">
+        <div id="hk-h1"></div><div id="hk-h2"></div><div id="hk-h3"></div><div id="hk-h4"></div>
+    </div>
+    <div class="viz-grid cols-3">
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">CAL</span><span class="hud-badge">35 DAYS</span></div>
+            <div class="viz-panel-title"><span class="dot green"></span>诊断日历热力</div>
+            <div id="hCalendar" style="margin-top:10px;"></div>
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:#64748b;margin-top:8px;"><span>少</span><span style="letter-spacing:3px;">■ ■ ■ ■ ■</span><span>多</span></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">RANK</span></div>
+            <div class="viz-panel-title"><span class="dot amber"></span>高频诊断排行</div>
+            <div id="hRank" style="margin-top:6px;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">FEED</span><span class="hud-lamp"></span></div>
+            <div class="viz-panel-title"><span class="dot cyan"></span>最近归档动态</div>
+            <div id="hStream"></div>
+        </div>
+    </div>
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">TREE</span></div>
+            <div class="viz-panel-title"><span class="dot blue"></span>亚型档案量树图</div>
+            <div style="height:210px;" id="hTree"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">GAUGE</span></div>
+            <div class="viz-panel-title"><span class="dot pink"></span>报告复核通过率</div>
+            <div id="hGauge" style="display:flex;justify-content:center;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">TERMS</span><span class="hud-badge ai">ARCHIVE</span></div>
+            <div class="viz-panel-title"><span class="dot purple"></span>历史诊断词云</div>
+            <div id="hWords" style="min-height:210px;display:flex;align-items:center;"></div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* 历史记录：点击时粘液融合，动画播完再跳页
+   卡片是不透明白底，所以胶囊外扩 6px，让卡片外圈露出"黏液环" */
+window.addEventListener('load', function () {
+    var grid = document.getElementById('gooHistoryGrid');
+    if (grid && window.GooeyNav) {
+        window.GooeyNav.attach(grid, function () {
+            return Array.prototype.slice.call(grid.querySelectorAll('a[href^="/history/"]'));
+        }, {
+            radius: '14px', outset: 6, initial: 0,
+            flipText: false, showOnClickOnly: true, delayNavigate: 450
+        });
+    }
+    var smart = document.getElementById('gooSmartLink');
+    if (smart && window.GooeyNav) {
+        window.GooeyNav.attach(smart, function () {
+            return Array.prototype.slice.call(smart.querySelectorAll('a'));
+        }, {
+            radius: '8px', outset: 3, initial: 0,
+            flipText: true, showOnClickOnly: true, delayNavigate: 450
+        });
+    }
+});
+
+// ===== 历史记录可视化图表 =====
+(function () {
+    var V = window.PathoViz;
+    if (!V) return;
+
+    // KPI 动画
+    var total = 2847, normal = 1923, abnormal = total - normal;
+    function countUp(id, target) {
+        var el = document.getElementById(id); if (!el) return;
+        var s = 0, step = target / 50;
+        var t = setInterval(function () { s += step; if (s >= target) { s = target; clearInterval(t); } el.textContent = Math.floor(s).toLocaleString(); }, 20);
+    }
+    countUp('hKpiTotal', total);
+    countUp('hKpiNormal', normal);
+    countUp('hKpiAbnormal', abnormal);
+    document.getElementById('hKpiAvg').textContent = '8.6';
+
+    // 诊断量与准确率趋势
+    V.makeChart('line', 'hTrend', {
+        labels: V.mock.labels(30),
+        datasets: [{
+            label: '诊断量',
+            data: V.mock.trend(30, 80, 30),
+            borderColor: V.COLORS.teal,
+            backgroundColor: V.hexToRgba(V.COLORS.teal, 0.15),
+            fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2
+        }, {
+            label: '准确率(%)',
+            data: (function () { var a = []; for (var i = 0; i < 30; i++) a.push((95 + Math.sin(i / 4) * 1.2 + Math.random()).toFixed(1)); return a; })(),
+            borderColor: V.COLORS.amber,
+            backgroundColor: V.hexToRgba(V.COLORS.amber, 0.08),
+            fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2, yAxisID: 'y1'
+        }]
+    }, {
+        plugins: { legend: V.darkLegend({ position: 'top' }) },
+        scales: V.darkScales({ y1: { position: 'right', min: 90, max: 100, grid: { display: false } } })
+    });
+
+    // 器官分布
+    var og = V.mock.organs();
+    V.builders.doughnut('hOrgan', og.map(function (o) { return o.name; }), og.map(function (o) { return o.value; }));
+
+    // 病变性质
+    V.builders.doughnut('hNature', ['Normal', 'Abnormal'], [normal, abnormal], [V.COLORS.green, V.COLORS.red]);
+
+    // 亚型分布
+    var st = V.mock.subtype();
+    V.makeChart('bar', 'hSubtype', {
+        labels: st.map(function (s) { return s.name; }),
+        datasets: [{
+            data: st.map(function (s) { return s.value; }),
+            backgroundColor: V.PALETTE.slice(0, st.length),
+            borderRadius: 6, borderSkipped: false
+        }]
+    }, { plugins: { legend: { display: false } } });
+
+    // 单图 vs 多图
+    V.builders.doughnut('hMode', ['单图诊断', '多图分析'], [2104, 743], [V.COLORS.blue, V.COLORS.purple]);
+
+    // ===== v2 大屏组件 =====
+    V.sparkKpi('hk-h1', { icon: '📁', value: '2,847', unit: '份', label: '归档报告', delta: 6.8, color: V.COLORS.teal, spark: V.mock.trend(14, 80, 16) });
+    V.sparkKpi('hk-h2', { icon: '🔁', value: '38', unit: '份', label: '本周复核', delta: 15.2, color: V.COLORS.cyan, spark: V.mock.trend(14, 50, 20) });
+    V.sparkKpi('hk-h3', { icon: '✅', value: '98.1', unit: '%', label: '复核通过率', delta: 0.4, color: V.COLORS.green, spark: V.mock.trend(14, 95, 3) });
+    V.sparkKpi('hk-h4', { icon: '⏳', value: '2.4', unit: '天', label: '平均出具周期', delta: -12, color: V.COLORS.amber, spark: V.mock.trend(14, 40, 10) });
+
+    var hv = [];
+    for (var hi = 0; hi < 35; hi++) hv.push(Math.random() * (hi % 7 < 5 ? 1 : 0.4));
+    V.calendar('hCalendar', hv);
+    V.rankList('hRank', [
+        { name: '腺癌', value: 486 }, { name: '鳞癌', value: 312 }, { name: '炎症', value: 264 },
+        { name: '息肉', value: 198 }, { name: '增生', value: 156 }, { name: '淋巴瘤', value: 98 },
+        { name: '黑色素瘤', value: 64 }, { name: '正常组织', value: 41 }
+    ]);
+    V.eventStream('hStream', [
+        { time: '今天 14:32', text: '结肠腺癌报告已归档 #A231', level: 'ok' },
+        { time: '今天 13:58', text: '批次 MULTI-88 汇总报告入库', level: 'info' },
+        { time: '今天 11:20', text: '病理医生复核通过 #A228', level: 'ok' },
+        { time: '昨天 17:42', text: '肺部鳞癌报告补充免疫组化', level: 'warn' },
+        { time: '昨天 15:07', text: '导出 10 月质控月报 PDF', level: 'ai' }
+    ]);
+    V.treemap('hTree', [
+        { name: '腺癌', value: 486, color: V.COLORS.pink }, { name: '鳞癌', value: 312, color: V.COLORS.purple },
+        { name: '炎症性病变', value: 264, color: V.COLORS.amber }, { name: '息肉', value: 198, color: V.COLORS.cyan },
+        { name: '增生', value: 156, color: V.COLORS.teal }, { name: '淋巴瘤', value: 98, color: V.COLORS.blue },
+        { name: '黑色素瘤', value: 64 }, { name: '其他', value: 231, color: V.COLORS.slate }
+    ]);
+    V.gauge('hGauge', 98, { label: '医生复核通过', color: V.COLORS.green });
+    V.wordCloud('hWords', [
+        { text: '腺癌', size: 26, color: V.COLORS.pink }, { text: '炎症', size: 20, color: V.COLORS.amber },
+        { text: '复核通过', size: 17, color: V.COLORS.green }, { text: '结肠', size: 22, color: V.COLORS.cyan },
+        { text: '肺', size: 15 }, { text: '胃', size: 14 }, { text: '息肉', size: 16 },
+        { text: '已归档', size: 13 }, { text: 'AI 初审', size: 14, color: V.COLORS.purple },
+        { text: '鳞癌', size: 17, color: V.COLORS.teal }, { text: '建议复查', size: 12, color: V.COLORS.red },
+        { text: '良性', size: 14 }, { text: '待随访', size: 13 }
+    ]);
+})();
+</script>
+{% endblock %}

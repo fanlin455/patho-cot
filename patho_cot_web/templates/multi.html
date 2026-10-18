@@ -1,0 +1,707 @@
+﻿﻿{% extends "base.html" %}
+{% set active_page = "multi" %}
+
+{% block title %}多图分析 - 智析病理{% endblock %}
+{% block header_title %}多图分析（多 patch）{% endblock %}
+{% block header_subtitle %}一次上传多个病理 patch，批量执行五级分析并生成跨 patch 综合汇总{% endblock %}
+
+{% block content %}
+
+<style>
+    #reportContent h2 { font-size: 1.2rem; font-weight: 700; margin-top: 1.2rem; margin-bottom: 0.5rem; padding-bottom: 0.25rem; border-bottom: 1px solid #e5e7eb; }
+    #reportContent h3 { font-size: 1.05rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.4rem; }
+    #reportContent p { margin-bottom: 0.5rem; line-height: 1.6; }
+    #reportContent ul { padding-left: 1.2rem; margin: 0.3rem 0; }
+    #reportContent table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 0.875rem; }
+    #reportContent th { background: #f9fafb; font-weight: 600; text-align: left; padding: 0.4rem 0.75rem; border-bottom: 2px solid #d1d5db; }
+    #reportContent td { padding: 0.35rem 0.75rem; border-bottom: 1px solid #e5e7eb; }
+    .metric-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.75rem; padding: 1rem; }
+    .patch-card { transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+    .patch-card.is-active { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
+    @media print {
+        aside, main > header, #uploadForm, #progressSection, .no-print { display: none !important; }
+        main { margin-left: 0 !important; padding: 0 !important; }
+        body { background: #fff !important; }
+    }
+    /* 批次作战墙：6 行 ×12 列热力格与 5 条事件流内容较高，
+       卡片跨两个网格行并收紧格尺寸，避免被 .rb-card 的 overflow:hidden 裁切 */
+    #batchWall .rb-tall { grid-row: span 2; }
+    #muHeat .viz-hm-y { padding: 20px 0 2px; }
+    #muHeat .viz-hm-y span { height: 24px; line-height: 24px; }
+    #muHeat .viz-hm-row i { aspect-ratio: auto; height: 24px; min-height: 0; }
+    #muHeat .viz-hm-row { gap: 4px; margin-bottom: 3px; }
+    #muStream.viz-stream { max-height: none; }
+    @media (max-width: 1100px) {
+        #batchWall .rb-s4 { grid-column: span 12; }
+    }
+</style>
+
+<div id="gooBackNav" class="mb-4">
+    <a href="/diagnose/1" class="inline-flex items-center px-4 py-2.5 text-sm font-medium text-blue-600">← 返回分步诊断</a>
+</div>
+
+<!-- 上传区域 -->
+<div class="glass p-6 mb-6" id="multiUploadCard">
+    <form id="uploadForm" class="space-y-4">
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-end">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">选择多个病理图像或 patch（可多选）</label>
+                <input type="file" id="imageFile" multiple accept="image/*,.svs,.ndpi,.tiff,.tif,.mrxs" class="hidden">
+                <div class="flex items-center gap-4 border border-gray-300 rounded-lg p-1.5">
+                    <div id="gooPickFile">
+                        <button type="button" id="pickFileBtn"
+                            class="goo-dark-btn text-sm font-semibold px-5 py-2.5 whitespace-nowrap">选择文件</button>
+                    </div>
+                    <span id="fileName" class="text-sm text-gray-500 truncate">未选择文件</span>
+                    <button type="button" id="scanBtn" class="scan-btn whitespace-nowrap ml-auto">📱 扫码上传</button>
+                </div>
+            </div>
+            <div id="gooSubmit">
+                <button type="submit" id="submitBtn"
+                    class="w-full lg:w-auto btn-primary disabled:opacity-50 disabled:cursor-not-allowed font-semibold px-6 py-2.5 rounded-lg whitespace-nowrap">
+                    <span id="btnText">开始分析</span>
+                    <span id="btnSpinner" class="hidden ml-2 inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                </button>
+            </div>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">病情描述</label>
+            <textarea id="descriptionInput" rows="3" placeholder="输入患者病情描述、临床症状等信息，将整合到最终报告中..."
+                class="block w-full text-sm border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"></textarea>
+        </div>
+    </form>
+</div>
+
+<!-- 进度条 -->
+<div id="progressSection" class="hidden mb-6">
+    <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-medium text-gray-700" id="progressLabel">准备中...</span>
+        <span class="text-sm text-gray-500" id="progressPercent">0%</span>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+        <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
+    </div>
+</div>
+
+<!-- 结果区 -->
+<div id="resultsArea" class="hidden space-y-4">
+    <!-- 汇总区 -->
+    <div class="glass overflow-hidden">
+        <div class="p-4 border-b bg-gray-50 flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
+            <div class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5h16M4 12h16M4 19h16"/></svg>
+            </div>
+            <div><h4 class="font-semibold text-gray-900">多 patch 综合分析</h4></div>
+            <span id="multiModeBadge" class="md:ml-auto px-3 py-1 rounded-full text-sm font-semibold bg-emerald-100 text-emerald-700">等待分析</span>
+        </div>
+        <div class="p-4">
+            <div id="multiSummaryMetrics" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+            <div id="representativePatches" class="hidden mt-4 border-t border-gray-100 pt-4"></div>
+        </div>
+    </div>
+
+    <!-- patch 卡片区 -->
+    <div class="glass overflow-hidden">
+        <div class="p-4 border-b bg-gray-50 flex items-center justify-between gap-3">
+            <div><h4 class="font-semibold text-gray-900">patch 级分析结果</h4></div>
+            <span id="patchCountBadge" class="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">0 个 patch</span>
+        </div>
+        <div id="patchGrid" class="p-4 grid grid-cols-1 xl:grid-cols-2 gap-4"></div>
+    </div>
+
+    <!-- 报告区 -->
+    <div class="glass overflow-hidden">
+        <div class="p-4 border-b bg-gray-50 flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-teal-100 flex items-center justify-center text-teal-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            </div>
+            <div><h4 class="font-semibold text-gray-900">综合分析报告</h4></div>
+            <div class="ml-auto flex items-center gap-2 no-print">
+                <span id="reportBadge" class="px-3 py-1 rounded-full text-sm font-semibold bg-teal-100 text-teal-700 hidden"></span>
+                <button id="copyReportBtn" type="button" class="hidden px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm hover:bg-gray-50 transition-colors">复制报告</button>
+                <button id="printReportBtn" type="button" class="hidden px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm hover:bg-gray-50 transition-colors">打印 / 存 PDF</button>
+            </div>
+        </div>
+        <div class="p-4">
+            <div id="reportContent" class="prose prose-sm max-w-none text-gray-700">
+                <p class="text-gray-400 text-center">等待报告生成...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新增可视化区：多图批量分析汇总看板 -->
+<section class="viz-section">
+    <div class="viz-section-title">多图批量分析汇总看板</div>
+    <div class="viz-kpi-grid">
+        <div class="viz-kpi"><div class="icon">🗂️</div><div><div class="val">12</div><div class="label">本次 patch 数</div></div></div>
+        <div class="viz-kpi"><div class="icon">✅</div><div><div class="val">10</div><div class="label">质检通过</div></div></div>
+        <div class="viz-kpi"><div class="icon">⚠️</div><div><div class="val">2</div><div class="label">质检不合格</div></div></div>
+        <div class="viz-kpi"><div class="icon">⏱️</div><div><div class="val">1m42s</div><div class="label">总耗时</div></div></div>
+    </div>
+    <div class="viz-grid cols-3">
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot"></span>patch 质检通过率</div>
+            <div id="muQcRing" style="margin-top:10px;"></div>
+        </div>
+        <div class="viz-panel viz-span-2">
+            <div class="viz-panel-title"><span class="dot blue"></span>各 patch 器官分布（堆叠）</div>
+            <div class="viz-chart-box" style="height:200px;"><canvas id="muOrganStack"></canvas></div>
+        </div>
+    </div>
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot amber"></span>病变性质占比</div>
+            <div class="viz-chart-box" style="height:190px;"><canvas id="muNature"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot green"></span>亚型分布</div>
+            <div class="viz-chart-box" style="height:190px;"><canvas id="muSubtype"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot purple"></span>置信度分布</div>
+            <div class="viz-chart-box" style="height:190px;"><canvas id="muConf"></canvas></div>
+        </div>
+    </div>
+</section>
+
+<!-- v2 大屏增强：批次作战墙 -->
+<section class="viz-section" id="batchWall">
+    <div class="viz-section-title"><span class="diamond"></span>批次作战墙 · 并行推理监控<span class="hud-badge ai" style="margin-left:10px;">BATCH × 12</span></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;">
+        <div id="muk1"></div><div id="muk2"></div><div id="muk3"></div><div id="muk4"></div>
+    </div>
+    <div class="real-bento">
+        <!-- 真实 MRI（A-05 实拍） -->
+        <div class="rb-card rb-photo rb-s5 rb-r2">
+            <img src="/static/medical/A-05.jpg?v=real1" alt="MR 磁共振扫描">
+            <span class="rb-corner tl"></span><span class="rb-corner bl"></span>
+            <span class="rb-code">REAL · MRI / A-05</span>
+            <div class="rb-cap"><b>MR 多模态影像队列</b><span>影像 / 病理 Patch 统一排队推理</span></div>
+        </div>
+        <!-- 真实 CT 灯箱（A-04 实拍） -->
+        <div class="rb-card rb-photo rb-s7 rb-r2">
+            <img src="/static/medical/A-04.jpg?v=real1" alt="CT 灯箱阅片">
+            <span class="rb-corner tr"></span><span class="rb-corner br"></span>
+            <span class="rb-code">REAL · CT LIGHTBOX / A-04</span>
+            <div class="rb-cap"><b>CT 灯箱并排阅片</b><span>12 张 Patch · 多切片复核 · AI 预标注高亮</span></div>
+        </div>
+        <!-- 批次热力（保留密度视图） -->
+        <div class="rb-card rb-s8 rb-tall">
+            <div class="ct"><span class="d" style="background:#f472b6;"></span>批次 × 器官 检出热力<span class="hud-badge warn" style="margin-left:auto;">6 × 12</span></div>
+            <div class="rb-body" id="muHeat"></div>
+        </div>
+        <!-- 调度事件流（保留） -->
+        <div class="rb-card rb-s4 rb-tall">
+            <div class="ct"><span class="d" style="background:#4ade80;"></span>批次调度事件流<span class="hud-lamp amber" style="margin-left:auto;"></span></div>
+            <div class="rb-body" id="muStream"></div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let patchState = {};
+let currentRecordId = null;
+let lastReportText = '';
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+function fmtPct(value, digits = 1) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '-';
+    return (num * 100).toFixed(digits) + '%';
+}
+function fmtConfidence(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '-';
+    if (num >= 0.99) return '99%';
+    return (num * 100).toFixed(1) + '%';
+}
+function fmtNum(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? String(num) : '-';
+}
+function metric(label, value, tone = 'text-gray-900') {
+    return `<div class="metric-card">
+        <div class="text-xs text-gray-500">${escapeHtml(label)}</div>
+        <div class="mt-1 text-2xl font-bold ${tone}">${escapeHtml(value)}</div>
+    </div>`;
+}
+function pill(text, cls) {
+    return `<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${cls}">${escapeHtml(text)}</span>`;
+}
+function resultLine(label, value, prob) {
+    if (!value) return '';
+    return `<div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        <span class="text-slate-500">${escapeHtml(label)}：</span><span class="font-semibold text-slate-900">${escapeHtml(value)}</span>
+        <span class="ml-2 text-slate-500">置信度：</span><span class="font-semibold text-slate-900">${fmtConfidence(prob)}</span>
+    </div>`;
+}
+function resultMetricLine(label, value, secondLabel, secondValue) {
+    return `<div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        <span class="text-slate-500">${escapeHtml(label)}：</span><span class="font-semibold text-slate-900">${escapeHtml(value)}</span>
+        <span class="ml-2 text-slate-500">${escapeHtml(secondLabel)}：</span><span class="font-semibold text-slate-900">${escapeHtml(secondValue)}</span>
+    </div>`;
+}
+function qcFailReasons(qc) {
+    const reasons = qc.fail_reasons || qc.warnings || [];
+    if (!reasons.length) return '';
+    return `<div class="mt-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+        <div class="font-semibold mb-1">质控未通过原因</div>
+        <ul class="list-disc pl-5 space-y-1">${reasons.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+    </div>`;
+}
+function modelErrorBlock(errors) {
+    if (!errors || errors.length === 0) return '';
+    return `<div class="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div class="font-semibold mb-1">模型调用失败</div>
+        <div class="space-y-1">${errors.map(err => {
+            const step = err.step_name || err.failed_step_name || `Step ${err.step_id || '-'}`;
+            const msg = err.error_message || err.message || '未知错误';
+            return `<div>${escapeHtml(step)}：${escapeHtml(msg)}</div>`;
+        }).join('')}</div>
+    </div>`;
+}
+
+function renderPatchCardHtml(state) {
+    const qc = state.steps[1] || state.result?.qc || {};
+    const organ = state.steps[2] || state.result?.organ || {};
+    const detect = state.steps[3] || state.result?.detection || {};
+    const nature = state.steps[4] || state.result?.nature || {};
+    const subtype = state.steps[5] || state.result?.subtype || {};
+    const imageUrl = state.patch_url || '';
+    const errors = state.errors || state.result?.errors || [];
+    const isRejected = qc.is_usable === false || state.status === 'rejected';
+    const statusText = state.status === 'done' ? '完成'
+        : state.status === 'running' ? '分析中'
+        : state.status === 'rejected' ? '质控未通过'
+        : state.status === 'error' ? '模型异常'
+        : '等待中';
+    const statusClass = state.status === 'done' ? 'bg-green-100 text-green-700'
+        : state.status === 'running' ? 'bg-blue-100 text-blue-700'
+        : state.status === 'rejected' ? 'bg-yellow-100 text-yellow-700'
+        : state.status === 'error' ? 'bg-red-100 text-red-700'
+        : 'bg-slate-100 text-slate-600';
+
+    return `<div class="p-4">
+        <div class="flex gap-4">
+            <div class="w-28 h-28 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
+                ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" class="w-full h-full object-cover" alt="patch ${state.patch_index}">` : ''}
+            </div>
+            <div class="min-w-0 flex-1">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0"><h5 class="font-semibold text-gray-900">Patch ${state.patch_index}</h5></div>
+                    ${pill(statusText, statusClass)}
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-center">
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-2"><div class="text-sm font-semibold text-slate-900">${qc.usability_score != null ? Number(qc.usability_score).toFixed(2) : '-'}</div><div class="text-[11px] text-slate-500">综合质量</div></div>
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-2"><div class="text-sm font-semibold text-slate-900">${qc.focus_score != null ? Number(qc.focus_score).toFixed(1) : '-'}</div><div class="text-[11px] text-slate-500">对焦</div></div>
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-2"><div class="text-sm font-semibold text-slate-900">${qc.stain_score != null ? Number(qc.stain_score).toFixed(1) : '-'}</div><div class="text-[11px] text-slate-500">染色</div></div>
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-2"><div class="text-sm font-semibold text-slate-900">${qc.tissue_ratio != null ? fmtPct(qc.tissue_ratio, 1) : '-'}</div><div class="text-[11px] text-slate-500">组织占比</div></div>
+                </div>
+            </div>
+        </div>
+        ${qcFailReasons(qc)}
+        ${modelErrorBlock(errors)}
+        <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+            ${!isRejected ? resultLine('器官', organ.top_organ_cn || organ.top_organ, organ.top_prob) : ''}
+            ${!isRejected ? resultLine('性质', nature.top_nature_cn || nature.top_nature, nature.top_prob) : ''}
+            ${!isRejected ? resultLine('亚型提示', subtype.top_subtype_cn || subtype.top_subtype, subtype.top_prob) : ''}
+            ${!isRejected ? resultMetricLine('病变细胞', fmtNum(detect.lesion_count), '总检测数', fmtNum(detect.total_boxes)) : ''}
+            ${isRejected ? pill('已拦截后续模型', 'bg-yellow-100 text-yellow-700') : ''}
+        </div>
+        ${detect.roi_image_url && !isRejected ? `<div class="mt-3 rounded-lg border border-gray-100 overflow-hidden bg-gray-50"><img src="${escapeHtml(detect.roi_image_url)}" class="w-full max-h-56 object-contain" alt="patch ROI"></div>` : ''}
+    </div>`;
+}
+
+function initPatchCards(patches) {
+    patchState = {};
+    const grid = document.getElementById('patchGrid');
+    grid.innerHTML = '';
+    document.getElementById('patchCountBadge').textContent = `${patches.length} 个 patch`;
+    patches.forEach(patch => {
+        patchState[patch.patch_index] = {
+            patch_index: patch.patch_index,
+            patch_name: patch.patch_name,
+            patch_url: patch.patch_url,
+            status: 'waiting', steps: {}, errors: [], result: null,
+        };
+        const card = document.createElement('div');
+        card.id = `patchCard${patch.patch_index}`;
+        card.className = 'patch-card rounded-xl border border-gray-200 bg-white overflow-hidden';
+        card.innerHTML = renderPatchCardHtml(patchState[patch.patch_index]);
+        grid.appendChild(card);
+    });
+}
+
+function updatePatchCard(index) {
+    const state = patchState[index];
+    const card = document.getElementById(`patchCard${index}`);
+    if (!state || !card) return;
+    card.classList.toggle('is-active', state.status === 'running');
+    card.innerHTML = renderPatchCardHtml(state);
+}
+
+function renderMultiSummary(summary) {
+    document.getElementById('multiModeBadge').textContent = '综合分析完成';
+    document.getElementById('multiModeBadge').className = 'md:ml-auto px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-700';
+    const metrics = [
+        metric('总 patch 数', fmtNum(summary.total_patches), 'text-slate-900'),
+        metric('合格 patch', `${fmtNum(summary.usable_patches)} / ${fmtPct(summary.usable_ratio)}`, 'text-emerald-600'),
+        metric('低质量 patch', fmtNum(summary.rejected_patches), 'text-yellow-600'),
+        metric('异常 patch', `${fmtNum(summary.abnormal_patches)} / ${fmtPct(summary.abnormal_ratio)}`, 'text-red-600'),
+        metric('病变细胞总数', fmtNum(summary.total_lesion_count), 'text-red-600'),
+        metric('主导器官', summary.top_organ_cn || '未知', 'text-blue-600'),
+    ];
+    document.getElementById('multiSummaryMetrics').innerHTML = metrics.join('');
+
+    const reps = summary.representative_patches || [];
+    const repBox = document.getElementById('representativePatches');
+    if (reps.length === 0) {
+        repBox.classList.add('hidden');
+        repBox.innerHTML = '';
+        return;
+    }
+    let html = '<h5 class="font-semibold text-gray-900 mb-3">代表性 patch</h5><div class="grid grid-cols-1 md:grid-cols-3 gap-3">';
+    reps.forEach(item => {
+        html += `<div class="rounded-lg border border-gray-200 bg-white overflow-hidden">
+            ${item.roi_image_url ? `<img src="${escapeHtml(item.roi_image_url)}" class="w-full h-36 object-contain bg-slate-50" alt="代表性 patch ROI">` : ''}
+            <div class="p-3 text-sm">
+                <div class="font-semibold text-gray-900">Patch ${item.patch_index}</div>
+                <div class="mt-2 text-gray-600">异常概率：${fmtConfidence(item.abnormal_prob)}</div>
+                <div class="text-gray-600">病变细胞：${fmtNum(item.lesion_count)}</div>
+                <div class="text-gray-600 truncate">性质：${escapeHtml(item.nature || '-')}</div>
+                <div class="text-gray-600 truncate">亚型提示：${escapeHtml(item.subtype || '-')}</div>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    repBox.innerHTML = html;
+    repBox.classList.remove('hidden');
+}
+
+function handleMultiSSEEvent(event) {
+    updateProgress(event);
+    const payload = event.data || {};
+    const eventType = event.event_type || payload.event_type;
+
+    if (eventType === 'multi_init') {
+        initPatchCards(payload.patches || []);
+        return;
+    }
+    if (eventType === 'patch_started') {
+        const state = patchState[payload.patch_index];
+        if (state) { state.status = 'running'; updatePatchCard(payload.patch_index); }
+        return;
+    }
+    if (eventType === 'patch_step') {
+        const index = payload.patch_index || event.patch_index;
+        const state = patchState[index];
+        if (state) {
+            if (event.status === 'error') {
+                state.status = 'error';
+                state.errors = state.errors || [];
+                state.errors.push({
+                    step_id: event.step_id, step_name: event.step_name,
+                    message: event.message,
+                    error_message: payload.error_message || event.message,
+                    error_type: payload.error_type || '',
+                });
+            } else if (event.status === 'skipped') {
+                state.status = 'rejected';
+            } else if (state.status !== 'error') {
+                state.status = 'running';
+            }
+            if (event.status === 'done') state.steps[event.step_id] = payload;
+            updatePatchCard(index);
+        }
+        return;
+    }
+    if (eventType === 'patch_done') {
+        const result = payload.patch_result || {};
+        const state = patchState[payload.patch_index];
+        if (state) {
+            state.result = result;
+            state.errors = result.errors || state.errors || [];
+            state.status = result.has_error ? 'error' : (result.is_usable ? 'done' : 'rejected');
+            updatePatchCard(payload.patch_index);
+        }
+        return;
+    }
+    if (eventType === 'multi_summary') {
+        (payload.patch_results || []).forEach(result => {
+            const state = patchState[result.patch_index];
+            if (state) {
+                state.result = result;
+                state.errors = result.errors || state.errors || [];
+                state.status = result.has_error ? 'error' : (result.is_usable ? 'done' : 'rejected');
+                updatePatchCard(result.patch_index);
+            }
+        });
+        renderMultiSummary(payload.summary || {});
+    }
+    if (event.status === 'error' && event.step_id === -1) {
+        document.getElementById('multiModeBadge').textContent = '分析失败';
+        document.getElementById('multiModeBadge').className = 'md:ml-auto px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-700';
+        document.getElementById('progressLabel').textContent = event.message || '多 patch 分析失败';
+    }
+}
+
+function updateProgress(event) {
+    if (event.progress == null) return;
+    const pct = Math.max(0, Math.min(100, Math.round(event.progress * 100)));
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('progressPercent').textContent = pct + '%';
+    document.getElementById('progressLabel').textContent = event.message || event.step_name || '分析中...';
+}
+
+async function consumeSSE(response, onEvent) {
+    if (!response.ok) throw new Error(`请求失败：${response.status}`);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const content = line.slice(6);
+            if (content === '[DONE]' || !content.trim()) continue;
+            try { onEvent(JSON.parse(content)); } catch (err) { console.warn('SSE 解析失败', err); }
+        }
+    }
+}
+
+function setButtonDisabled(disabled) {
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = disabled;
+    document.getElementById('btnText').textContent = disabled ? '分析中' : '开始分析';
+    document.getElementById('btnSpinner').classList.toggle('hidden', !disabled);
+}
+
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const files = Array.from(document.getElementById('imageFile').files || []);
+    if (files.length === 0) return;
+
+    const description = document.getElementById('descriptionInput').value.trim();
+    patchState = {};
+    currentRecordId = null;
+    lastReportText = '';
+    document.getElementById('copyReportBtn').classList.add('hidden');
+    document.getElementById('printReportBtn').classList.add('hidden');
+    document.getElementById('reportBadge').classList.add('hidden');
+    document.getElementById('reportContent').innerHTML = '<p class="text-gray-400 text-center">等待报告生成...</p>';
+    document.getElementById('multiModeBadge').textContent = '分析中';
+    document.getElementById('multiModeBadge').className = 'md:ml-auto px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 text-blue-700';
+    document.getElementById('progressSection').classList.remove('hidden');
+    document.getElementById('resultsArea').classList.remove('hidden');
+    setButtonDisabled(true);
+
+    const pipelineResults = [];
+    const formData = new FormData();
+    files.forEach(file => formData.append('files', file));
+
+    try {
+        const response = await fetch('/api/multi-patch-pipeline', { method: 'POST', body: formData });
+        await consumeSSE(response, event => {
+            pipelineResults.push(event);
+            if (event.data && event.data.record_id != null) currentRecordId = event.data.record_id;
+            handleMultiSSEEvent(event);
+        });
+        await generateReport(description, pipelineResults);
+    } catch (error) {
+        console.error('Pipeline error:', error);
+        document.getElementById('progressLabel').textContent = '连接错误: ' + error.message;
+        document.getElementById('multiModeBadge').textContent = '分析失败';
+        document.getElementById('multiModeBadge').className = 'md:ml-auto px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-700';
+    } finally {
+        setButtonDisabled(false);
+    }
+});
+
+async function generateReport(description, results) {
+    const reportContent = document.getElementById('reportContent');
+    reportContent.innerHTML = '<p class="text-gray-400 text-center"><span class="animate-pulse">...</span> 正在调用本地 LLM 生成报告...</p>';
+    try {
+        const resp = await fetch('/api/report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description, results, record_id: currentRecordId }),
+        });
+        await consumeSSE(resp, event => {
+            if (event.data && event.data.report) renderReport(event.data.report);
+        });
+    } catch (error) {
+        reportContent.innerHTML = `<p class="text-red-600 text-center">报告生成失败: ${escapeHtml(error.message)}</p>`;
+    }
+}
+
+function renderReport(reportText) {
+    lastReportText = reportText || '';
+    const badge = document.getElementById('reportBadge');
+    badge.textContent = '综合报告';
+    badge.classList.remove('hidden');
+    document.getElementById('copyReportBtn').classList.remove('hidden');
+    document.getElementById('printReportBtn').classList.remove('hidden');
+    let html;
+    if (typeof marked !== 'undefined') html = marked.parse(reportText);
+    else html = '<p>' + escapeHtml(reportText).replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
+    document.getElementById('reportContent').innerHTML = html;
+}
+
+document.getElementById('copyReportBtn').addEventListener('click', copyReport);
+document.getElementById('printReportBtn').addEventListener('click', () => window.print());
+
+function copyReport() {
+    const text = lastReportText || document.getElementById('reportContent').innerText || '';
+    const done = () => {
+        const btn = document.getElementById('copyReportBtn');
+        btn.textContent = '已复制 ✓';
+        setTimeout(() => { btn.textContent = '复制报告'; }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+    } else fallbackCopy(text, done);
+}
+function fallbackCopy(text, done) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    done();
+}
+/* 顶部返回链接：与左侧菜单完全一致 —— 黑色胶囊常驻 + 白字，点击时粘液喷发后跳页 */
+window.addEventListener('load', function () {
+    var box = document.getElementById('gooBackNav');
+    if (!box || !window.GooeyNav) return;
+    window.GooeyNav.attach(box, function () {
+        return Array.prototype.slice.call(box.querySelectorAll('a'));
+    }, {
+        radius: '100vw', outset: 0, initial: 0,
+        flipText: true, solidPill: true, showOnClickOnly: false, delayNavigate: 220
+    });
+});
+/* 选择文件：原生 file 按钮无法挂载效果，改用自定义按钮 + 隐藏 input */
+(function () {
+    const input = document.getElementById('imageFile');
+    const pick = document.getElementById('pickFileBtn');
+    const nameEl = document.getElementById('fileName');
+    if (!input || !pick) return;
+    pick.addEventListener('click', () => input.click());
+    input.addEventListener('change', () => {
+        const fs = input.files || [];
+        if (nameEl) nameEl.textContent = fs.length > 1 ? (fs.length + ' 个文件') : (fs[0] ? fs[0].name : '未选择文件');
+    });
+})();
+
+/* 手机扫码上传：追加到已选文件列表（多图模式） */
+(function () {
+    const btn = document.getElementById('scanBtn');
+    if (!btn || !window.PathoCommon) return;
+    btn.addEventListener('click', function () {
+        PathoCommon.openScanModal({
+            onImage: async function (d) {
+                try {
+                    const resp = await fetch(d.url);
+                    if (!resp.ok) throw new Error('拉取失败 ' + resp.status);
+                    const blob = await resp.blob();
+                    const file = new File([blob], d.name, { type: blob.type || 'image/png' });
+                    const input = document.getElementById('imageFile');
+                    const dt = new DataTransfer();
+                    Array.from(input.files || []).forEach(f => dt.items.add(f));
+                    dt.items.add(file);
+                    input.files = dt.files;
+                    input.dispatchEvent(new Event('change'));
+                } catch (e) {
+                    alert('手机图像加载失败: ' + e.message);
+                }
+            }
+        });
+    });
+})();
+
+/* 选择文件 / 开始分析：黑色胶囊 + 白字（与左侧菜单一致） */
+window.addEventListener('load', function () {
+    if (!window.GooeyNav) return;
+    ['gooPickFile', 'gooSubmit'].forEach(function (id) {
+        var box = document.getElementById(id);
+        if (!box) return;
+        window.GooeyNav.attach(box, function () {
+            return Array.prototype.slice.call(box.querySelectorAll('button'));
+        }, {
+            radius: '100vw', outset: 0, initial: 0,
+            flipText: true, solidPill: true, showOnClickOnly: false
+        });
+    });
+});
+
+// ===== 多图分析汇总图表 =====
+(function () {
+    var V = window.PathoViz;
+    if (!V) return;
+
+    // 质检通过率环形
+    V.ringProgress('muQcRing', 83, V.COLORS.green, '质检通过率');
+
+    // 各 patch 器官分布（堆叠柱）
+    var organs8 = V.ORGANS.slice(0, 6);
+    V.makeChart('bar', 'muOrganStack', {
+        labels: organs8,
+        datasets: [{
+            label: 'patch 数',
+            data: organs8.map(function () { return Math.round(Math.random() * 4 + 1); }),
+            backgroundColor: V.PALETTE.slice(0, organs8.length),
+            borderRadius: 6, borderSkipped: false, stack: 'o'
+        }]
+    }, { plugins: { legend: { display: false } } });
+
+    // 病变性质
+    V.builders.doughnut('muNature', ['Normal', 'Abnormal'], [7, 5], [V.COLORS.green, V.COLORS.red]);
+
+    // 亚型分布
+    var st = V.mock.subtype().slice(0, 6);
+    V.builders.doughnut('muSubtype',
+        st.map(function (s) { return s.name; }),
+        st.map(function (s) { return s.value; }));
+
+    // 置信度分布
+    V.makeChart('bar', 'muConf', {
+        labels: ['<70%', '70-80%', '80-90%', '90-95%', '>95%'],
+        datasets: [{
+            data: [1, 2, 3, 4, 2],
+            backgroundColor: [V.COLORS.red, V.COLORS.amber, V.COLORS.cyan, V.COLORS.teal, V.COLORS.green],
+            borderRadius: 6, borderSkipped: false
+        }]
+    }, { plugins: { legend: { display: false } } });
+
+    // ===== v2 大屏组件 =====
+    V.sparkKpi('muk1', { icon: '🖼️', value: '12', unit: '张', label: '批次大小', delta: 20, color: V.COLORS.teal, spark: V.mock.trend(14, 60, 14) });
+    V.sparkKpi('muk2', { icon: '⏱️', value: '14.2', unit: 's', label: '批次总耗时', delta: -8.4, color: V.COLORS.cyan, spark: V.mock.trend(14, 50, 12) });
+    V.sparkKpi('muk3', { icon: '🎯', value: '91.4', unit: '%', label: '批次一致率', delta: 2.1, color: V.COLORS.green, spark: V.mock.trend(14, 88, 5) });
+    V.sparkKpi('muk4', { icon: '⚠️', value: '1', unit: '张', label: '低质复检', delta: -50, color: V.COLORS.amber, spark: V.mock.trend(14, 30, 18) });
+
+    var bhRows = ['批次A', '批次B', '批次C', '批次D', '批次E', '批次F'];
+    var bhCols = ['结肠', '胃', '肺', '肝', '乳腺', '肾', '皮肤', '胰腺', '脑', '其他', '复检', '失败'];
+    var bm = bhRows.map(function () { return bhCols.map(function () { return Math.round(Math.random() * 100) / 100; }); });
+    V.heatmap('muHeat', { rowLabels: bhRows, colLabels: bhCols, matrix: bm, raw: false, color: V.COLORS.pink });
+
+    V.eventStream('muStream', [
+        { time: '14:31:02', text: '12 张 patch 进入并行队列（GPU0/1）', level: 'info' },
+        { time: '14:31:03', text: 'P-03 质检告警：边缘折叠', level: 'warn' },
+        { time: '14:31:09', text: '8/12 器官分类完成，多数表决=结肠', level: 'ai' },
+        { time: '14:31:14', text: 'P-07 检出细胞数异常高，已标记复核', level: 'warn' },
+        { time: '14:31:16', text: '批次汇总报告生成，一致率 91.4%', level: 'ok' }
+    ]);
+})();
+</script>
+{% endblock %}

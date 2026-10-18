@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D 病理浏览器 | Patho-COT · BC融合方案</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #070d18;
+    color: #e2e8f0;
+    position: relative;
+}
+
+/* ========== 背景层 ========== */
+.bg-container { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
+.bg-base {
+    position: absolute; inset: 0;
+    background: 
+        linear-gradient(180deg, #070d18 0%, #0a1422 55%, #0b1a28 100%);
+}
+
+/* Aurora 叠加 */
+#cell-fluid-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* 光束效果（Light Beams） */
+.beams { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.beam {
+    position: absolute;
+    bottom: -10%;
+    width: 2px;
+    height: 120%;
+    background: linear-gradient(180deg, 
+        transparent 0%, 
+        rgba(45,212,191,0.15) 30%, 
+        rgba(45,212,191,0.35) 50%, 
+        rgba(45,212,191,0.15) 70%, 
+        transparent 100%);
+    filter: blur(8px);
+    animation: beamFloat 6s ease-in-out infinite;
+}
+@keyframes beamFloat {
+    0%, 100% { transform: translateY(0) rotate(2deg); opacity: 0.6; }
+    50% { transform: translateY(-3%) rotate(2deg); opacity: 1; }
+}
+
+/* 丝绸噪点 */
+.bg-noise {
+    position: absolute; inset: 0;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    pointer-events: none;
+}
+
+/* 星点 */
+.stars { position: absolute; inset: 0; pointer-events: none; }
+.star {
+    position: absolute; width: 2px; height: 2px;
+    background: white; border-radius: 50%;
+    animation: twinkle 3s ease-in-out infinite;
+}
+@keyframes twinkle {
+    0%, 100% { opacity: 0.2; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.5); }
+}
+
+/* ========== 侧边栏（保持B方案一致） ========== */
+.sidebar {
+    position: fixed; top: 0; left: 0;
+    width: 240px; height: 100vh;
+    background: rgba(8,16,30,0.60);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border-right: 1px solid rgba(45,212,191,0.10);
+    z-index: 100;
+    display: flex; flex-direction: column;
+}
+.sidebar-logo {
+    padding: 20px 20px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center; gap: 12px;
+}
+.sidebar-logo-icon {
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, #0d9488, #0891b2);
+    border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-weight: 800; font-size: 16px;
+    box-shadow: 0 0 24px rgba(13,148,136,0.5);
+    position: relative; overflow: hidden;
+}
+.sidebar-logo-icon::after {
+    content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+    background: linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.3) 50%, transparent 60%);
+    animation: logoShine 3s ease-in-out infinite;
+}
+@keyframes logoShine {
+    0%, 100% { transform: translateX(-100%) rotate(45deg); }
+    50% { transform: translateX(100%) rotate(45deg); }
+}
+.sidebar-logo-text h1 { font-size: 16px; font-weight: 700; color: #f1f5f9; }
+.sidebar-logo-text p { font-size: 10px; color: #64748b; margin-top: 2px; }
+
+.sidebar-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
+.nav-section-label {
+    font-size: 10px; font-weight: 700; color: #64748b;
+    padding: 10px 12px 8px; text-transform: uppercase; letter-spacing: 1px;
+}
+
+.gooey-nav { position: relative; }
+.nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 14px; margin: 2px 0;
+    border-radius: 10px; cursor: pointer;
+    font-size: 13px; color: #94a3b8;
+    position: relative; z-index: 3;
+    transition: color .25s ease;
+    font-weight: 500; text-decoration: none;
+}
+.nav-item svg { width: 18px; height: 18px; }
+.nav-item:hover { color: #e2e8f0; }
+.nav-item.active { color: #67e8f9; font-weight: 700; }
+.nav-indicator {
+    position: absolute; left: 0; right: 0; height: 42px;
+    background: #10333d;
+    border-radius: 10px; z-index: 1;
+    transition: top .45s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.nav-badge {
+    margin-left: auto; font-size: 10px;
+    padding: 2px 8px; border-radius: 100px;
+    background: rgba(45,212,191,0.22); color: #5eead4; font-weight: 600;
+}
+.nav-item:not(.active) .nav-badge { background: rgba(6,182,212,0.18); color: #7dd3f7; }
+
+.sidebar-footer { padding: 14px; border-top: 1px solid rgba(255,255,255,0.06); }
+
+/* ========== 顶部栏 ========== */
+.topbar {
+    position: fixed; top: 0; left: 240px; right: 0;
+    height: 64px;
+    background: rgba(15,23,42,0.3);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center;
+    padding: 0 28px; z-index: 90;
+}
+.topbar-title { font-size: 15px; font-weight: 600; color: #f1f5f9; }
+.topbar-subtitle { font-size: 12px; color: #64748b; margin-left: 12px; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.topbar-btn {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all .2s ease; color: #94a3b8;
+}
+.topbar-btn:hover { background: rgba(45,212,191,0.1); border-color: rgba(45,212,191,0.3); color: #5eead4; }
+.topbar-badge {
+    padding: 6px 14px;
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 100px;
+    font-size: 11px; font-weight: 600; color: #fca5a5;
+    display: flex; align-items: center; gap: 6px;
+    animation: badgePulse 2s ease-in-out infinite;
+}
+@keyframes badgePulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(239,68,68,0.2); }
+    50% { box-shadow: 0 0 20px rgba(239,68,68,0.4); }
+}
+.topbar-badge::before {
+    content: ''; width: 6px; height: 6px;
+    background: #ef4444; border-radius: 50%;
+    box-shadow: 0 0 6px #ef4444;
+    animation: livePulse 1.5s ease-in-out infinite;
+}
+@keyframes livePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ========== 3D 视口区 ========== */
+.viewport {
+    position: absolute;
+    top: 64px; left: 240px; right: 340px; bottom: 90px;
+    z-index: 10;
+    overflow: hidden;
+}
+
+/* WebGL 细胞画布 */
+#cellCanvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+    cursor: grab;
+}
+#cellCanvas:active { cursor: grabbing; }
+
+/* 测量模式十字线覆盖层 */
+#measureOverlay {
+    position: absolute; inset: 0; z-index: 20;
+    pointer-events: none; display: none;
+}
+#measureOverlay .hl, #measureOverlay .vl {
+    position: absolute; left: 0; right: 0;
+    height: 1px; background: rgba(6,182,212,0.7);
+    box-shadow: 0 0 6px rgba(6,182,212,0.6);
+}
+#measureOverlay .vl { left: auto; top: 0; bottom: 0; width: 1px; height: auto; }
+#measureOverlay .coords {
+    position: absolute; top: 12px; left: 12px;
+    padding: 6px 12px; border-radius: 8px;
+    background: rgba(15,23,42,0.85);
+    border: 1px solid rgba(6,182,212,0.35);
+    color: #7dd3f7; font-size: 11px; font-family: monospace;
+    box-shadow: 0 0 12px rgba(6,182,212,0.25);
+}
+
+.cell-scene {
+    width: 550px; height: 550px;
+    position: relative;
+    transform-style: preserve-3d;
+    animation: sceneRotate 25s linear infinite;
+}
+@keyframes sceneRotate {
+    from { transform: rotateY(0deg) rotateX(12deg); }
+    to { transform: rotateY(360deg) rotateX(12deg); }
+}
+
+/* 3D 细胞 - 病理学写实风格 */
+.cell-3d {
+    position: absolute;
+    border-radius: 50%;
+    transform-style: preserve-3d;
+    overflow: hidden;
+}
+
+/* 细胞膜（外圈半透明晕染） */
+.cell-3d::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%,
+        transparent 60%,
+        rgba(167,139,250,0.25) 78%,
+        rgba(167,139,250,0.1) 88%,
+        transparent 100%);
+    z-index: -1;
+}
+
+/* 肿瘤细胞 - 腺癌：大核、深染、不规则 */
+.cell-3d.tumor {
+    background: 
+        radial-gradient(circle at 32% 28%, 
+            rgba(255,180,180,0.5) 0%,
+            rgba(244,114,182,0.3) 18%,
+            rgba(219,39,119,0.55) 45%,
+            rgba(157,23,77,0.85) 75%,
+            rgba(76,5,25,1) 100%);
+    box-shadow: 
+        0 0 60px rgba(219,39,119,0.5),
+        0 0 100px rgba(219,39,119,0.2),
+        inset -20px -22px 50px rgba(0,0,0,0.55),
+        inset 12px 14px 35px rgba(255,180,200,0.18);
+}
+
+/* 正常细胞 - 上皮细胞：粉染胞质，规则核 */
+.cell-3d.normal {
+    background: 
+        radial-gradient(circle at 33% 30%, 
+            rgba(255,210,220,0.55) 0%,
+            rgba(244,114,182,0.2) 20%,
+            rgba(219,39,119,0.3) 50%,
+            rgba(131,24,67,0.7) 80%,
+            rgba(59,7,30,1) 100%);
+    box-shadow: 
+        0 0 40px rgba(219,39,119,0.3),
+        inset -14px -16px 38px rgba(0,0,0,0.45),
+        inset 8px 10px 22px rgba(255,200,215,0.15);
+}
+
+/* 淋巴细胞 - 小而圆，深紫核，极少胞质 */
+.cell-3d.lymph {
+    background: 
+        radial-gradient(circle at 35% 32%, 
+            rgba(196,181,253,0.45) 0%,
+            rgba(167,139,250,0.4) 25%,
+            rgba(124,58,237,0.7) 60%,
+            rgba(76,29,149,0.95) 100%);
+    box-shadow: 
+        0 0 30px rgba(124,58,237,0.45),
+        inset -8px -8px 20px rgba(0,0,0,0.5),
+        inset 5px 6px 14px rgba(220,200,255,0.2);
+}
+
+/* 细胞核 - 苏木精紫蓝色 */
+.nucleus {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 35%,
+        rgba(216,180,254,0.9) 0%,
+        rgba(167,139,250,0.85) 30%,
+        rgba(124,58,237,0.95) 65%,
+        rgba(76,29,149,1) 100%);
+    box-shadow: 
+        inset -6px -7px 18px rgba(20,0,50,0.6),
+        inset 4px 5px 12px rgba(230,210,255,0.25),
+        0 0 20px rgba(124,58,237,0.6);
+}
+/* 核仁 - 肿瘤细胞核仁明显 */
+.nucleus::after {
+    content: '';
+    position: absolute;
+    top: 35%; left: 30%;
+    width: 22%; height: 22%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 40%,
+        rgba(255,220,230,0.95),
+        rgba(236,72,153,0.9));
+    box-shadow: 0 0 6px rgba(236,72,153,0.6);
+}
+
+/* 细胞器颗粒（胞质内小点） */
+.organelle {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(124,58,237,0.6);
+    box-shadow: 0 0 4px rgba(124,58,237,0.5);
+}
+
+/* 高光反射点 */
+.cell-3d::after {
+    content: '';
+    position: absolute;
+    top: 18%; left: 22%;
+    width: 28%; height: 18%;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(255,255,255,0.35) 0%, transparent 70%);
+    filter: blur(2px);
+}
+
+/* 细胞浮动动画 */
+@keyframes float1 {
+    0%, 100% { transform: translateZ(0) translateY(0); }
+    50% { transform: translateZ(20px) translateY(-15px); }
+}
+@keyframes float2 {
+    0%, 100% { transform: translateZ(0) translateY(0); }
+    50% { transform: translateZ(-15px) translateY(-20px); }
+}
+@keyframes float3 {
+    0%, 100% { transform: translateZ(0) translateY(0); }
+    50% { transform: translateZ(25px) translateY(10px); }
+}
+
+/* 切片平面 - 紫红色调，带发光边缘 */
+.slice-plane {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 420px; height: 420px;
+    transform: translate(-50%, -50%) rotateX(90deg);
+    border: 1px solid rgba(6,182,212,0.35);
+    background: 
+        linear-gradient(rgba(6,182,212,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(45,212,191,0.06) 1px, transparent 1px);
+    background-size: 22px 22px;
+    animation: sliceMove 5s ease-in-out infinite;
+    box-shadow: 
+        0 0 40px rgba(6,182,212,0.25),
+        inset 0 0 60px rgba(45,212,191,0.1);
+}
+.slice-plane::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center,
+        rgba(6,182,212,0.12) 0%,
+        transparent 70%);
+}
+@keyframes sliceMove {
+    0%, 100% { transform: translate(-50%, -50%) rotateX(90deg) translateY(-40px); }
+    50% { transform: translate(-50%, -50%) rotateX(90deg) translateY(40px); }
+}
+
+/* 坐标轴 */
+.axis {
+    position: absolute;
+    top: 50%; left: 50%;
+    height: 1px;
+    transform-origin: left center;
+    opacity: 0.3;
+}
+.axis-x { width: 300px; background: linear-gradient(90deg, transparent, #2dd4bf, transparent); transform: rotateY(0deg); }
+.axis-y { width: 300px; background: linear-gradient(90deg, transparent, #38bdf8, transparent); transform: rotateZ(90deg); }
+.axis-z { width: 300px; background: linear-gradient(90deg, transparent, #22d3ee, transparent); transform: rotateY(90deg); }
+
+/* ========== 右侧面板 ========== */
+.right-panel {
+    position: fixed; top: 64px; right: 0; bottom: 90px;
+    width: 340px;
+    background: rgba(15,23,42,0.4);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border-left: 1px solid rgba(255,255,255,0.06);
+    padding: 24px 20px;
+    overflow-y: auto;
+    z-index: 50;
+}
+
+.panel-section { margin-bottom: 24px; }
+.panel-title {
+    font-size: 11px; font-weight: 700; color: #64748b;
+    text-transform: uppercase; letter-spacing: 1px;
+    margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+}
+.panel-title::before {
+    content: ''; width: 4px; height: 14px;
+    background: linear-gradient(180deg, #2dd4bf, #0d9488);
+    border-radius: 2px;
+}
+
+/* 诊断概览卡 */
+.overview-card {
+    background: linear-gradient(135deg, rgba(239,68,68,0.15), rgba(13,148,136,0.1));
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+    animation: overviewPulse 4s ease-in-out infinite;
+}
+@keyframes overviewPulse {
+    0%, 100% { box-shadow: 0 0 30px rgba(239,68,68,0.15); }
+    50% { box-shadow: 0 0 50px rgba(239,68,68,0.25), 0 0 80px rgba(13,148,136,0.1); }
+}
+.overview-card::before {
+    content: ''; position: absolute; top: -50%; right: -30%;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(239,68,68,0.25) 0%, transparent 60%);
+    pointer-events: none;
+}
+.oc-title { font-size: 12px; color: #fca5a5; margin-bottom: 6px; }
+.oc-value {
+    font-size: 32px; font-weight: 800;
+    background: linear-gradient(135deg, #fff 0%, #fca5a5 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+}
+.oc-desc { font-size: 11px; color: #94a3b8; margin-top: 8px; line-height: 1.6; }
+
+/* 信息行 */
+.info-row {
+    display: flex; justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 12px;
+}
+.info-row:last-child { border-bottom: none; }
+.info-row .label { color: #64748b; }
+.info-row .value { font-weight: 600; color: #e2e8f0; }
+.value-red { color: #f87171 !important; }
+.value-green { color: #4ade80 !important; }
+.value-blue { color: #22d3ee !important; }
+.value-purple { color: #2dd4bf !important; }
+.value-amber { color: #fbbf24 !important; }
+
+/* 图层开关 */
+.layer-toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    cursor: pointer;
+}
+.layer-toggle:last-child { border-bottom: none; }
+.layer-left { display: flex; align-items: center; gap: 10px; }
+.layer-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    box-shadow: 0 0 8px currentColor;
+}
+.layer-name { font-size: 12px; color: #cbd5e1; }
+.toggle {
+    width: 36px; height: 20px;
+    background: rgba(100,116,139,0.3);
+    border-radius: 10px;
+    position: relative;
+    transition: all .3s ease;
+}
+.toggle::after {
+    content: '';
+    position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px;
+    background: white;
+    border-radius: 50%;
+    transition: all .3s ease;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.toggle.active {
+    background: linear-gradient(135deg, #0d9488, #06b6d4);
+    box-shadow: 0 0 12px rgba(13,148,136,0.5);
+}
+.toggle.active::after { left: 18px; }
+
+/* 玻璃卡 */
+.glass-card {
+    background: rgba(30,41,59,0.4);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 14px;
+    transition: all .3s ease;
+    position: relative;
+    overflow: hidden;
+}
+.glass-card:hover {
+    border-color: rgba(45,212,191,0.25);
+    transform: translateY(-2px);
+}
+.glass-card-title {
+    font-size: 12px; font-weight: 600; color: #e2e8f0;
+    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+}
+.glass-card-icon {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, #0d9488, #06b6d4);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 14px;
+    flex-shrink: 0;
+}
+
+/* ========== 底部控制栏 ========== */
+.controls-bar {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 4px;
+    padding: 6px 10px;
+    background: rgba(15,23,42,0.6);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 18px;
+    z-index: 200;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+}
+.control-btn {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: #94a3b8;
+    position: relative;
+    transition: all .25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    background: transparent; border: none;
+}
+.control-btn:hover {
+    background: rgba(45,212,191,0.15);
+    color: #5eead4;
+}
+.control-btn:hover svg { transform: translateY(-4px) scale(1.15); }
+.control-btn svg { width: 18px; height: 18px; transition: transform .25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.control-btn.active {
+    background: linear-gradient(135deg, #0d9488, #06b6d4);
+    color: white;
+    box-shadow: 0 4px 16px rgba(13,148,136,0.45);
+}
+.control-divider {
+    width: 1px; height: 28px;
+    background: rgba(255,255,255,0.08);
+    margin: 0 6px;
+}
+.control-label {
+    font-size: 11px; color: #64748b;
+    padding: 0 10px;
+    white-space: nowrap;
+}
+.control-slider {
+    width: 80px;
+    -webkit-appearance: none;
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    outline: none;
+}
+.control-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    background: linear-gradient(135deg, #2dd4bf, #0d9488);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(13,148,136,0.5);
+}
+.control-tooltip {
+    position: absolute;
+    bottom: calc(100% + 8px); left: 50%;
+    transform: translateX(-50%);
+    padding: 5px 10px;
+    background: rgba(15,23,42,0.95);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    font-size: 11px; color: #e2e8f0;
+    white-space: nowrap;
+    opacity: 0; pointer-events: none;
+    transition: opacity .2s ease;
+}
+.control-btn:hover .control-tooltip { opacity: 1; }
+
+/* 浮动诊断卡 */
+.floating-card {
+    position: absolute;
+    background: rgba(30,41,59,0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    padding: 14px 16px;
+    z-index: 40;
+    pointer-events: none;
+    animation: floatCard 5s ease-in-out infinite;
+    min-width: 160px;
+}
+@keyframes floatCard {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+}
+.fc-title {
+    font-size: 11px; font-weight: 600; color: #f1f5f9;
+    margin-bottom: 6px;
+    display: flex; align-items: center; gap: 6px;
+}
+.fc-value {
+    font-size: 22px; font-weight: 800;
+    background: linear-gradient(135deg, #fff, #2dd4bf);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+}
+.fc-desc { font-size: 10px; color: #64748b; margin-top: 4px; }
+
+.fc-tumor {
+    border-color: rgba(239,68,68,0.4);
+    box-shadow: 0 0 30px rgba(239,68,68,0.25);
+}
+.fc-tumor .fc-value {
+    background: linear-gradient(135deg, #fff, #f87171);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* 样本图像网格 */
+.image-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+.image-grid-item {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.08);
+    aspect-ratio: 1;
+    background: rgba(15,23,42,0.5);
+    cursor: pointer;
+    transition: all .25s ease;
+}
+.image-grid-item:hover {
+    border-color: rgba(45,212,191,0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(13,148,136,0.25);
+}
+.image-grid-item img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.image-grid-item .img-name {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 4px 8px;
+    font-size: 10px; color: #e2e8f0;
+    background: linear-gradient(transparent, rgba(5,6,15,0.85));
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.image-grid-empty {
+    padding: 24px 12px;
+    text-align: center;
+    font-size: 12px; color: #64748b;
+    border: 1px dashed rgba(255,255,255,0.1);
+    border-radius: 10px;
+}
+/* ========== 嵌入模式（?embed=1，供分步诊断第3步 iframe 使用）：隐藏外框 ========== */
+body.embed .sidebar { display: none; }
+body.embed .topbar { left: 0; }
+body.embed .viewport { left: 0; }
+body.embed .bg-container { display: none; }
+body.embed { background: #070d18; }
+</style>
+</head>
+<body>
+<script>(function(){function c(){try{['patho_auth','patho_auth_ts','patho_user','patho_boot_id'].forEach(function(k){localStorage.removeItem(k);});}catch(e){}}function a(){try{if(localStorage.getItem('patho_auth')!=='1')return false;var t=parseInt(localStorage.getItem('patho_auth_ts')||'0',10);if(!t||Date.now()-t>7*24*3600*1e3){c();return false;}return true;}catch(e){return false;}}function g(n){fetch('/api/boot-id',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(d){var s=null;try{s=localStorage.getItem('patho_boot_id');}catch(e){}if(d&&s&&d.bootId!==s){c();location.replace('/');return;}n();}).catch(function(){n();});}if(!a()){location.replace('/');return;}g(function(){});})();</script>
+<script>
+/* 尽早应用嵌入模式，避免 iframe 内先闪侧边栏 */
+if (new URLSearchParams(location.search).get('embed') === '1') {
+    document.body.classList.add('embed');
+    document.documentElement.classList.add('embed');
+    window.addEventListener('load', function () {
+        window.dispatchEvent(new Event('resize'));
+        setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 300);
+    });
+}
+</script>
+
+<!-- 背景 -->
+<div class="bg-container">
+    <div class="bg-base"></div>
+    <div class="beams" id="beams"></div>
+    <div class="stars" id="stars"></div>
+    <div class="bg-noise"></div>
+</div>
+
+<!-- 侧边栏 -->
+<aside class="sidebar">
+    <div class="sidebar-logo">
+        <div class="sidebar-logo-icon">P</div>
+        <div class="sidebar-logo-text">
+            <h1>Patho-COT</h1>
+            <p>3D 病理浏览器</p>
+        </div>
+    </div>
+    <div class="sidebar-nav">
+        <div class="gooey-nav" id="homeNav">
+            <a href="/dashboard" class="nav-item" data-index="0">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
+                总览仪表盘
+            </a>
+        </div>
+        <div class="nav-section-label" style="margin-top:14px;">诊断流程</div>
+        <div class="gooey-nav" id="mainNav">
+            <a href="/diagnose/1" class="nav-item" data-index="0">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                分步诊断
+            </a>
+            <a href="/multi" class="nav-item" data-index="1">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                多图分析
+            </a>
+        </div>
+        <div class="nav-section-label" style="margin-top:20px;">数据中心</div>
+        <div class="gooey-nav" id="dataNav">
+            <a href="/history" class="nav-item" data-index="0" style="padding: 10px 14px;">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                诊断历史
+            </a>
+            <a href="/datasets" class="nav-item" data-index="1" style="padding: 10px 14px;">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                数据集
+            </a>
+        </div>
+        <div class="nav-section-label" style="margin-top:20px;">系统</div>
+        <div class="gooey-nav" id="sysNav">
+            <a href="/models" class="nav-item" data-index="0">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                模型与部署
+            </a>
+        </div>
+    </div>
+    </aside>
+
+<!-- 顶部栏 -->
+<header class="topbar">
+    <div style="display:flex;align-items:center;gap:12px;">
+        <span class="topbar-title">3D 病理浏览器</span>
+        <span class="topbar-subtitle">结肠腺癌样本 · 1024³ voxels · 40×</span>
+    </div>
+    <div class="topbar-right">
+        <div class="topbar-badge">恶性肿瘤 · 高风险</div>
+        <button class="topbar-btn" title="全屏">⛶</button>
+    </div>
+</header>
+
+<!-- 3D 视口 -->
+<div class="viewport">
+    <canvas id="cellCanvas"></canvas>
+
+    <!-- 浮动诊断卡 -->
+    <div class="floating-card fc-tumor" style="top:20%;left:calc(50% + 100px);animation-delay:-1s;">
+        <div class="fc-title"><span style="color:#f87171;">●</span> 异常细胞 #A-042</div>
+        <div class="fc-value">98.6%</div>
+        <div class="fc-desc">肿瘤细胞置信度 · 高风险</div>
+    </div>
+    <div class="floating-card" style="top:55%;left:calc(50% + 140px);animation-delay:-2.5s;border-color:rgba(52,211,153,0.3);box-shadow:0 0 25px rgba(16,185,129,0.2);">
+        <div class="fc-title"><span style="color:#4ade80;">●</span> 正常细胞 #N-087</div>
+        <div class="fc-value" style="background:linear-gradient(135deg,#fff,#4ade80);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">96.2%</div>
+        <div class="fc-desc">正常上皮细胞</div>
+    </div>
+    <!-- 测量十字线覆盖层 -->
+    <div id="measureOverlay" style="display:none;">
+        <div class="hl" style="top:50%;"></div>
+        <div class="vl" style="left:50%;"></div>
+        <div class="coords" id="measureCoords">x: 0  y: 0</div>
+    </div>
+</div>
+
+<!-- 右侧面板 -->
+<div class="right-panel">
+    <div class="overview-card">
+        <div class="oc-title">⚠ 诊断概览</div>
+        <div class="oc-value">92.4%</div>
+        <div class="oc-desc">
+            结肠腺癌（中分化）恶性概率，建议<br>进一步检查和临床干预。
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <div class="panel-title">样本图像</div>
+        <div class="glass-card">
+            <div id="explorerImageGrid">
+                <div class="image-grid-empty">暂无样本图像，请先上传</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <div class="panel-title">细胞统计</div>
+        <div class="glass-card">
+            <div class="info-row"><span class="label">总细胞数</span><span class="value">128 个</span></div>
+            <div class="info-row"><span class="label">肿瘤细胞</span><span class="value value-red">37 个 (28.9%)</span></div>
+            <div class="info-row"><span class="label">正常上皮</span><span class="value value-green">65 个 (50.8%)</span></div>
+            <div class="info-row"><span class="label">淋巴细胞</span><span class="value value-blue">26 个 (20.3%)</span></div>
+            <div class="info-row"><span class="label">平均置信度</span><span class="value value-purple">0.87</span></div>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <div class="panel-title">图层控制</div>
+        <div class="glass-card" style="padding: 8px 16px;">
+            <div class="layer-toggle" onclick="toggleLayer(this)">
+                <div class="layer-left">
+                    <span class="layer-dot" style="background:#f87171;color:#f87171;"></span>
+                    <span class="layer-name">肿瘤细胞</span>
+                </div>
+                <div class="toggle active"></div>
+            </div>
+            <div class="layer-toggle" onclick="toggleLayer(this)">
+                <div class="layer-left">
+                    <span class="layer-dot" style="background:#4ade80;color:#4ade80;"></span>
+                    <span class="layer-name">正常细胞</span>
+                </div>
+                <div class="toggle active"></div>
+            </div>
+            <div class="layer-toggle" onclick="toggleLayer(this)">
+                <div class="layer-left">
+                    <span class="layer-dot" style="background:#c084fc;color:#c084fc;"></span>
+                    <span class="layer-name">淋巴细胞</span>
+                </div>
+                <div class="toggle active"></div>
+            </div>
+            <div class="layer-toggle" onclick="toggleLayer(this)">
+                <div class="layer-left">
+                    <span class="layer-dot" style="background:#2dd4bf;color:#2dd4bf;"></span>
+                    <span class="layer-name">切片平面</span>
+                </div>
+                <div class="toggle active"></div>
+            </div>
+            <div class="layer-toggle" onclick="toggleLayer(this)">
+                <div class="layer-left">
+                    <span class="layer-dot" style="background:#fbbf24;color:#fbbf24;"></span>
+                    <span class="layer-name">坐标轴</span>
+                </div>
+                <div class="toggle"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-section">
+        <div class="panel-title">显示选项</div>
+        <div class="glass-card">
+            <div class="info-row">
+                <span class="label">旋转速度</span>
+                <input type="range" class="control-slider" value="50" style="width:100px;">
+            </div>
+            <div class="info-row">
+                <span class="label">切片速度</span>
+                <input type="range" class="control-slider" value="40" style="width:100px;">
+            </div>
+            <div class="info-row">
+                <span class="label">细胞大小</span>
+                <input type="range" class="control-slider" value="60" style="width:100px;">
+            </div>
+        </div>
+    </div>
+
+    <a href="/diagnose/1" style="text-decoration:none;">
+        <div class="glass-card" style="background:linear-gradient(135deg, rgba(13,148,136,0.2), rgba(8,145,178,0.15));border-color:rgba(45,212,191,0.3);cursor:pointer;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <div class="glass-card-icon">📋</div>
+                <div>
+                    <div style="font-size:13px;font-weight:600;color:#e2e8f0;">查看完整诊断报告 →</div>
+                    <div style="font-size:11px;color:#94a3b8;margin-top:3px;">包含详细诊断描述与治疗建议</div>
+                </div>
+            </div>
+        </div>
+    </a>
+</div>
+
+<!-- 底部控制栏 -->
+<div class="controls-bar">
+    <button class="control-btn active">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        <span class="control-tooltip">自动旋转</span>
+    </button>
+    <button class="control-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11"/></svg>
+        <span class="control-tooltip">平移</span>
+    </button>
+    <button class="control-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"/></svg>
+        <span class="control-tooltip">缩放</span>
+    </button>
+    <div class="control-divider"></div>
+    <button class="control-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6z"/></svg>
+        <span class="control-tooltip">切片</span>
+    </button>
+    <button class="control-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 6l2.25 2.25L7.5 6l2.25 2.25L12 6l2.25 2.25L16.5 6l2.25 2.25L21 6M3 12l2.25 2.25L7.5 12l2.25 2.25L12 12l2.25 2.25L16.5 12l2.25 2.25L21 12M3 18l2.25 2.25L7.5 18l2.25 2.25L12 18l2.25 2.25L16.5 18l2.25 2.25L21 18"/></svg>
+        <span class="control-tooltip">测量</span>
+    </button>
+    <div class="control-divider"></div>
+    <button class="control-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        <span class="control-tooltip">重置视图</span>
+    </button>
+    <button class="control-btn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <span class="control-tooltip">截图</span>
+    </button>
+    <div class="control-divider"></div>
+    <span class="control-label">旋转速度</span>
+    <input type="range" class="control-slider" value="50">
+</div>
+
+<script src="/static/assets/bg-animated.js?v=G1"></script>
+<script src="/static/assets/rb-effects.js?v=G2"></script>
+<script type="module" src="/static/assets/cell-scene.js?v=6"></script>
+<script>
+// 生成光束
+var beamsContainer = document.getElementById('beams');
+var beamColors = [
+    'rgba(45,212,191,',
+    'rgba(6,182,212,',
+    'rgba(217,70,239,',
+    'rgba(13,148,136,',
+];
+for (var i = 0; i < 10; i++) {
+    var beam = document.createElement('div');
+    beam.className = 'beam';
+    beam.style.left = (5 + i * 10 + Math.random() * 4) + '%';
+    beam.style.animationDelay = (i * 0.8) + 's';
+    beam.style.animationDuration = (5 + Math.random() * 3) + 's';
+    beam.style.height = (100 + Math.random() * 30) + '%';
+    var color = beamColors[i % beamColors.length];
+    beam.style.background = 'linear-gradient(180deg, transparent 0%, ' + color + '0.1) 30%, ' + color + '0.3) 50%, ' + color + '0.1) 70%, transparent 100%)';
+    beam.style.filter = 'blur(' + (6 + Math.random() * 8) + 'px)';
+    beam.style.transform = 'rotate(' + (1 + Math.random() * 3) + 'deg)';
+    beamsContainer.appendChild(beam);
+}
+
+// 生成星星
+var starsContainer = document.getElementById('stars');
+for (var i = 0; i < 80; i++) {
+    var star = document.createElement('div');
+    star.className = 'star';
+    star.style.left = Math.random() * 100 + '%';
+    star.style.top = Math.random() * 100 + '%';
+    star.style.animationDelay = Math.random() * 3 + 's';
+    star.style.animationDuration = (2 + Math.random() * 3) + 's';
+    var size = 1 + Math.random() * 2;
+    star.style.width = size + 'px';
+    star.style.height = size + 'px';
+    starsContainer.appendChild(star);
+}
+
+// GooeyNav 已在 base.html 全局初始化，此处不再重复 new（否则双胶囊重叠）
+
+// 图层开关（同步控制 three.js 场景）
+var LAYER_MAP = { '肿瘤细胞': 'tumor', '正常细胞': 'normal', '淋巴细胞': 'lymph', '切片平面': 'slice', '坐标轴': 'axes' };
+function toggleLayer(el) {
+    var toggle = el.querySelector('.toggle');
+    toggle.classList.toggle('active');
+    var name = el.querySelector('.layer-name').textContent.trim();
+    var key = LAYER_MAP[name];
+    if (key && window.PathoCellScene) {
+        window.PathoCellScene.setLayer(key, toggle.classList.contains('active'));
+    }
+}
+
+// 3D 场景控制：滑块 + 底部按钮
+(function () {
+    var sideSliders = document.querySelectorAll('.right-panel .control-slider');
+    function whenReady(fn) {
+        if (window.PathoCellScene) fn();
+        else setTimeout(function () { whenReady(fn); }, 120);
+    }
+    // 右侧：0 旋转速度 / 1 切片速度 / 2 细胞大小
+    if (sideSliders[0]) sideSliders[0].addEventListener('input', function () {
+        whenReady(function () { PathoCellScene.setRotSpeed(this.value / 100 * 0.5); }.bind(this));
+    });
+    if (sideSliders[1]) sideSliders[1].addEventListener('input', function () {
+        whenReady(function () { PathoCellScene.setSliceSpeed(this.value / 100); }.bind(this));
+    });
+    if (sideSliders[2]) sideSliders[2].addEventListener('input', function () {
+        whenReady(function () { PathoCellScene.setCellScale(this.value / 60); }.bind(this));
+    });
+    // 底部旋转速度
+    var bottomSlider = document.querySelector('.controls-bar .control-slider');
+    if (bottomSlider) bottomSlider.addEventListener('input', function () {
+        whenReady(function () {
+            PathoCellScene.setRotSpeed(this.value / 100 * 0.5);
+            if (sideSliders[0]) sideSliders[0].value = this.value;
+        }.bind(this));
+    });
+
+    var btns = document.querySelectorAll('.controls-bar .control-btn');
+    // [0] 自动旋转 [1] 平移 [2] 缩放 [3] 切片 [4] 测量 [5] 重置视图 [6] 截图
+    if (btns[0]) btns[0].addEventListener('click', function () {
+        this.classList.toggle('active');
+        whenReady(function (b) { PathoCellScene.setAutoRotate(b.classList.contains('active')); }.bind(null, this));
+    });
+    if (btns[1]) btns[1].addEventListener('click', function () {
+        this.classList.toggle('active');
+        var on = this.classList.contains('active');
+        whenReady(function () { PathoCellScene.setPan(on); });
+    });
+    if (btns[2]) btns[2].addEventListener('click', function () {
+        this.classList.toggle('active');
+        var on = this.classList.contains('active');
+        whenReady(function () { PathoCellScene.setZoom(on ? +1.8 : -1.8); });
+    });
+    if (btns[3]) btns[3].addEventListener('click', function () {
+        this.classList.toggle('active');
+        var on = this.classList.contains('active');
+        whenReady(function () { PathoCellScene.setLayer('slice', on); });
+        var layerEls = document.querySelectorAll('.layer-toggle .layer-name');
+        layerEls.forEach(function (n) {
+            if (n.textContent.trim() === '切片平面') {
+                var t = n.closest('.layer-toggle').querySelector('.toggle');
+                t.classList.toggle('active', on);
+            }
+        });
+    });
+    if (btns[4]) btns[4].addEventListener('click', function () {
+        this.classList.toggle('active');
+        var on = this.classList.contains('active');
+        whenReady(function () { PathoCellScene.setMeasure(on); });
+    });
+    if (btns[5]) btns[5].addEventListener('click', function () {
+        whenReady(function () {
+            PathoCellScene.resetView();
+            if (btns[1]) btns[1].classList.remove('active');
+            if (btns[2]) btns[2].classList.remove('active');
+            if (btns[4]) btns[4].classList.remove('active');
+        });
+    });
+    if (btns[6]) btns[6].addEventListener('click', function () {
+        whenReady(function () { PathoCellScene.screenshot(); });
+    });
+
+    // 测量模式十字线跟随鼠标
+    whenReady(function () {
+        var cv = document.getElementById('cellCanvas');
+        var ov = document.getElementById('measureOverlay');
+        var coords = document.getElementById('measureCoords');
+        if (!cv || !ov) return;
+        cv.addEventListener('pointermove', function (e) {
+            if (!PathoCellScene.isMeasureMode()) return;
+            var rect = cv.getBoundingClientRect();
+            var x = e.clientX - rect.left;
+            var y = e.clientY - rect.top;
+            var xp = (x / rect.width * 100).toFixed(1);
+            var yp = (y / rect.height * 100).toFixed(1);
+            var hl = ov.querySelector('.hl');
+            var vl = ov.querySelector('.vl');
+            if (hl) hl.style.top = yp + '%';
+            if (vl) vl.style.left = xp + '%';
+            if (coords) coords.textContent = 'x: ' + xp + '%  y: ' + yp + '%';
+        });
+    });
+})();
+
+// 样本 preset（按文件名关键词匹配）
+var SAMPLE_PRESETS = [
+    { keywords: ['腺癌', 'adeno', 'colon', 'gastric', 'prostate', 'breast'],
+      name: '结肠腺癌样本', desc: '高分化腺癌 · 中风险',
+      tumorRatio: 0.3, normalRatio: 0.5, lymphRatio: 0.2, totalCells: 12,
+      confidence: 0.924, risk: '恶性肿瘤 · 高风险' },
+    { keywords: ['淋巴', 'lymph', 'leukemia', 'lymphoma'],
+      name: '淋巴组织样本', desc: '淋巴细胞浸润 · 高风险',
+      tumorRatio: 0.1, normalRatio: 0.25, lymphRatio: 0.65, totalCells: 14,
+      confidence: 0.891, risk: '淋巴瘤 · 高风险' },
+    { keywords: ['正常', 'normal', 'benign', '上皮'],
+      name: '正常上皮样本', desc: '良性上皮组织 · 低风险',
+      tumorRatio: 0.05, normalRatio: 0.8, lymphRatio: 0.15, totalCells: 10,
+      confidence: 0.962, risk: '正常 · 低风险' },
+    { keywords: ['混合', 'mixed', '炎症', 'inflamm'],
+      name: '混合组织样本', desc: '炎症浸润 · 中风险',
+      tumorRatio: 0.2, normalRatio: 0.5, lymphRatio: 0.3, totalCells: 12,
+      confidence: 0.763, risk: '混合性 · 中风险' }
+];
+var DEFAULT_PRESET = SAMPLE_PRESETS[3];
+function matchPreset(name) {
+    var n = (name || '').toLowerCase();
+    for (var i = 0; i < SAMPLE_PRESETS.length; i++) {
+        for (var j = 0; j < SAMPLE_PRESETS[i].keywords.length; j++) {
+            if (n.indexOf(SAMPLE_PRESETS[i].keywords[j]) >= 0) return SAMPLE_PRESETS[i];
+        }
+    }
+    // 伪随机轮转：用文件名 hash 选不同 preset，避免全 fallback 到同一个
+    var h = 0; for (var k = 0; k < (name || '').length; k++) h = (h * 31 + name.charCodeAt(k)) >>> 0;
+    return SAMPLE_PRESETS[(h % SAMPLE_PRESETS.length + 1) % SAMPLE_PRESETS.length];
+}
+
+// 加载样本图像网格
+(function() {
+    var gridContainer = document.getElementById('explorerImageGrid');
+    if (!gridContainer) return;
+    fetch('/api/explorer-images')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            var images = (data && data.images) || [];
+            if (images.length === 0) return; // 保留占位提示
+            var grid = document.createElement('div');
+            grid.className = 'image-grid';
+            images.forEach(function(img, idx) {
+                var item = document.createElement('div');
+                item.className = 'image-grid-item' + (idx === 0 ? ' active' : '');
+                item.title = img.name || '';
+                var image = document.createElement('img');
+                image.src = img.url;
+                image.alt = img.name || '';
+                image.loading = 'lazy';
+                var name = document.createElement('div');
+                name.className = 'img-name';
+                name.textContent = img.name || '';
+                item.appendChild(image);
+                item.appendChild(name);
+                // 样本切换 click
+                item.addEventListener('click', (function(nm, itm) {
+                    return function () {
+                        var preset = matchPreset(nm);
+                        gridContainer.querySelectorAll('.image-grid-item.active').forEach(function(r){ r.classList.remove('active'); });
+                        itm.classList.add('active');
+                        // 更新顶部标题
+                        var subtitle = document.querySelector('.topbar-subtitle');
+                        if (subtitle) subtitle.textContent = preset.name + ' · ' + preset.desc;
+                        // 更新诊断概览卡
+                        var ocTitle = document.querySelector('.overview-card .oc-title');
+                        var ocValue = document.querySelector('.overview-card .oc-value');
+                        var ocDesc = document.querySelector('.overview-card .oc-desc');
+                        if (ocTitle) ocTitle.textContent = preset.risk;
+                        if (ocValue) ocValue.textContent = (preset.confidence * 100).toFixed(1) + '%';
+                        if (ocDesc) ocDesc.innerHTML = preset.name + '<br>' + preset.desc;
+                        // 更新顶部徽章
+                        var badge = document.querySelector('.topbar-badge');
+                        if (badge) badge.textContent = preset.risk;
+                        // 切换 3D 细胞
+                        whenReady(function () { PathoCellScene.setSample(preset); });
+                    };
+                })(img.name, item));
+                grid.appendChild(item);
+            });
+            gridContainer.innerHTML = '';
+            gridContainer.appendChild(grid);
+            // 初始加载第一个样本的 preset
+            if (images[0]) {
+                var firstPreset = matchPreset(images[0].name);
+                var subtitle0 = document.querySelector('.topbar-subtitle');
+                if (subtitle0) subtitle0.textContent = firstPreset.name + ' · ' + firstPreset.desc;
+                var ocTitle0 = document.querySelector('.overview-card .oc-title');
+                var ocValue0 = document.querySelector('.overview-card .oc-value');
+                var ocDesc0 = document.querySelector('.overview-card .oc-desc');
+                if (ocTitle0) ocTitle0.textContent = firstPreset.risk;
+                if (ocValue0) ocValue0.textContent = (firstPreset.confidence * 100).toFixed(1) + '%';
+                if (ocDesc0) ocDesc0.innerHTML = firstPreset.name + '<br>' + firstPreset.desc;
+                var badge0 = document.querySelector('.topbar-badge');
+                if (badge0) badge0.textContent = firstPreset.risk;
+                whenReady(function () { PathoCellScene.setSample(firstPreset); });
+            }
+        })
+        .catch(function() { /* 请求失败时保留占位提示 */ });
+})();
+</script>
+</body>
+</html>

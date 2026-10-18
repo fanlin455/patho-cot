@@ -1,0 +1,17 @@
+﻿﻿{# 六步引导式诊断共用步骤条；由 /diagnose/{step} 路由注入 step(1..6)，状态由 wizard-flow.js 刷新 #}
+{% set _step_names = {1: '质量检测', 2: '器官分类', 3: '细胞检测', 4: '病变性质', 5: '亚型提示', 6: 'AI 报告'} %}
+<div id="stepBar" class="glass p-4 mb-6 no-print">
+    <div class="flex items-center justify-center gap-2 overflow-x-auto">
+        {% for s in range(1, 7) %}
+            {% if not loop.first %}<div class="step-connector" data-connector="{{ s - 1 }}"></div>{% endif %}
+            <div class="step-node locked flex flex-col items-center min-w-[70px]" data-step="{{ s }}" id="stepNode{{ s }}">
+                <div id="stepDot{{ s }}"
+                     class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300
+                            {% if s == step %}bg-blue-600 text-white animate-pulse{% else %}bg-gray-200 text-gray-500{% endif %}">
+                    {{ s }}
+                </div>
+                <span class="text-xs mt-1 text-gray-400">{{ _step_names[s] }}</span>
+            </div>
+        {% endfor %}
+    </div>
+</div>

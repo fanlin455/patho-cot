@@ -1,0 +1,169 @@
+﻿{% extends "base.html" %}
+{% set active_page = "diagnose" %}
+
+{% block title %}智析病理 - 第5步 亚型提示{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="/static/assets/wizard.css?v=cube1">{% endblock %}
+{% block header_title %}分步诊断 · 第5步{% endblock %}
+{% block header_subtitle %}组织成分精细化分类与概率提示{% endblock %}
+
+{% block content %}
+
+<div id="qcFailBanner" class="hidden">
+    ⚠️ 该图片未通过质量检测，以下分析结果<b>可能不准确，不能作为医疗参考</b>。
+</div>
+<div id="taskChip" class="hidden"></div>
+
+<div id="resultCard" class="hidden">
+    <div id="panel5" class="glass spotlight overflow-hidden">
+        <div class="p-4 border-b bg-gray-50 flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600">5</div>
+            <div>
+                <h4 class="font-semibold text-gray-900">组织亚型精细化分类</h4>
+                <p class="text-xs text-gray-500">MobileNetV3 — 组织成分概率提示</p>
+            </div>
+            <span id="subtypeBadge" class="ml-auto px-3 py-1 rounded-full text-sm font-semibold bg-amber-100 text-amber-700 hidden"></span>
+        </div>
+        <div id="stepBody" class="p-6"></div>
+    </div>
+</div>
+
+<div id="readyCard" class="hidden">
+    <div class="glass p-6 wz-note">
+        <p class="mb-4">准备进行<b>组织亚型分类</b>。模型将给出各组织成分的概率分布。</p>
+        <button type="button" data-pw="start" class="btn-primary px-6 py-2.5 rounded-lg text-sm font-semibold">开始亚型分类</button>
+    </div>
+</div>
+<div id="emptyState" class="hidden"><div class="glass p-6 wz-note" id="emptyBody"></div></div>
+
+<div id="stepActions" class="mt-6 no-print hidden"></div>
+
+<!-- 新增可视化区：组织亚型分类分析 -->
+<section class="viz-section">
+    <div class="viz-section-title">组织亚型精细化分类</div>
+    <div class="viz-grid cols-3">
+        <div class="viz-panel viz-span-2">
+            <div class="viz-panel-title"><span class="dot"></span>亚型概率分布（Top-7）</div>
+            <div class="viz-chart-box" style="height:220px;"><canvas id="d5SubBar"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot blue"></span>亚型类别占比</div>
+            <div class="viz-chart-box" style="height:220px;"><canvas id="d5SubPie"></canvas></div>
+        </div>
+    </div>
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot amber"></span>Top-1 置信度</div>
+            <div id="d5ConfRing" style="margin-top:20px;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot green"></span>亚型命中分布</div>
+            <div class="viz-chart-box" style="height:180px;"><canvas id="d5HistBar"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot purple"></span>亚型间相似度</div>
+            <div class="viz-chart-box" style="height:180px;"><canvas id="d5SimBar"></canvas></div>
+        </div>
+    </div>
+</section>
+
+<!-- v2 大屏增强：亚型分型台 -->
+<section class="viz-section">
+    <div class="viz-section-title"><span class="diamond"></span>MBNet 亚型分型 · 嵌入空间证据<span class="hud-badge warn" style="margin-left:10px;">TOP-1 0.62 · 需复核</span><span class="hud-lamp amber" style="margin-left:8px;"></span></div>
+    <div class="viz-grid cols-3">
+        <div class="viz-panel viz-span-2">
+            <div class="hud-hd"><span class="hud-code">SUB-EVID</span><span class="hud-badge ai">PROTOTYPE NET</span></div>
+            <div class="viz-panel-title"><span class="dot purple"></span>亚型原型匹配证据图（真实输出）</div>
+            <div id="d5Gallery" style="margin-top:4px;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">SUB-G</span></div>
+            <div class="viz-panel-title"><span class="dot amber"></span>Top-1 置信仪表</div>
+            <div id="d5Gauge" style="display:flex;justify-content:center;"></div>
+        </div>
+    </div>
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">SUB-P</span></div>
+            <div class="viz-panel-title"><span class="dot blue"></span>亚型概率画像</div>
+            <div class="viz-chart-box" style="height:190px;"><canvas id="d5Polar"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">SUB-BUB</span></div>
+            <div class="viz-panel-title"><span class="dot pink"></span>嵌入空间分布</div>
+            <div class="viz-chart-box" style="height:190px;"><canvas id="d5Bubble"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">SUB-LOG</span><span class="hud-lamp amber"></span></div>
+            <div class="viz-panel-title"><span class="dot green"></span>分型日志</div>
+            <div id="d5Stream"></div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>window.PATHO_STEP = 5;</script>
+<script src="/static/assets/wizard-flow.js?v=cube4"></script>
+<script>
+(function () {
+    var V = window.PathoViz; if (!V) return;
+    var st = V.SUBTYPES.slice(0, 7);
+    var probs = [0.62, 0.15, 0.10, 0.06, 0.04, 0.02, 0.01];
+    V.makeChart('bar', 'd5SubBar', {
+        labels: st,
+        datasets: [{ data: probs,
+            backgroundColor: V.PALETTE.slice(0, st.length), borderRadius: 6, borderSkipped: false }]
+    }, {
+        indexAxis: 'y', plugins: { legend: { display: false } },
+        scales: V.darkScales({ x: { max: 1, ticks: { callback: function (v) { return (v * 100) + '%'; } } } })
+    });
+    V.builders.pie('d5SubPie', st, probs.map(function (p) { return Math.round(p * 100); }));
+    V.ringProgress('d5ConfRing', 62, V.COLORS.amber, 'Top-1 置信度');
+    V.makeChart('bar', 'd5HistBar', {
+        labels: st,
+        datasets: [{ data: st.map(function () { return Math.round(Math.random() * 200 + 30); }),
+            backgroundColor: V.COLORS.green, borderRadius: 6, borderSkipped: false }]
+    }, { plugins: { legend: { display: false } } });
+    V.makeChart('bar', 'd5SimBar', {
+        labels: st.slice(0, 5),
+        datasets: [{ data: [0.92, 0.78, 0.65, 0.48, 0.33],
+            backgroundColor: V.COLORS.purple, borderRadius: 6, borderSkipped: false }]
+    }, { plugins: { legend: { display: false } }, scales: V.darkScales({ y: { max: 1 } }) });
+
+    // ===== v2 组件 =====
+    V.gallery('d5Gallery', [
+        { src: '/static/results/subtype_0105bd21.png', title: '腺癌原型', tag: 'd=0.62', color: V.COLORS.purple },
+        { src: '/static/results/subtype_03ccf38f.png', title: '鳞癌原型', tag: 'd=0.15', color: V.COLORS.cyan },
+        { src: '/static/results/subtype_02482b38.png', title: '小细胞癌', tag: 'd=0.10', color: V.COLORS.blue },
+        { src: '/static/results/subtype_03351e6b.png', title: '大细胞癌', tag: 'd=0.06', color: V.COLORS.amber }
+    ]);
+    V.gauge('d5Gauge', 62, { label: '低置信度·建议复核', color: V.COLORS.amber });
+    V.polar('d5Polar', st.slice(0, 6), probs.slice(0, 6),
+        [V.COLORS.purple, V.COLORS.cyan, V.COLORS.blue, V.COLORS.amber, V.COLORS.pink, V.COLORS.green]);
+
+    function bp(cx, cy, n, color) {
+        var a = [];
+        for (var i = 0; i < n; i++) {
+            a.push({ x: Math.round((cx + (Math.random() - .5) * 0.5) * 100) / 100,
+                     y: Math.round((cy + (Math.random() - .5) * 0.5) * 100) / 100, r: 4 + Math.random() * 6 });
+        }
+        return { label: '', data: a, color: color };
+    }
+    V.bubble('d5Bubble', { datasets: [
+        bp(0.3, 0.75, 18, V.COLORS.purple), bp(-0.4, 0.2, 14, V.COLORS.cyan),
+        bp(0.6, -0.2, 12, V.COLORS.amber), bp(-0.1, -0.6, 10, V.COLORS.pink)
+    ] }, {
+        scales: V.darkScales({
+            x: { min: -1, max: 1, title: { display: true, text: 'UMAP-1', color: '#64748b' } },
+            y: { min: -1, max: 1, title: { display: true, text: 'UMAP-2', color: '#64748b' } }
+        })
+    });
+    V.eventStream('d5Stream', [
+        { time: 'T+0.3s', text: 'MBNet 提取 512 维亚型嵌入向量', level: 'info' },
+        { time: 'T+0.7s', text: '与 9 类亚型原型距离计算完成', level: 'ai' },
+        { time: 'T+0.9s', text: 'Top-1 腺癌 0.62 < 0.75 复核阈值', level: 'warn' },
+        { time: 'T+1.0s', text: '已标记：建议病理医生二次确认', level: 'ok' }
+    ]);
+})();
+</script>
+{% endblock %}

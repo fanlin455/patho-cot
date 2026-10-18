@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Patho-COT 智能病理诊断系统项目展示">
+  <title>Patho-COT · 智析病理</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="hero">
+    <nav class="nav wrap" aria-label="主导航">
+      <a class="brand" href="#top" aria-label="Patho-COT 首页">
+        <span class="brand-mark">Ψ</span>
+        <span>Patho-COT</span>
+      </a>
+      <div class="nav-links">
+        <a href="#pipeline">诊断流程</a>
+        <a href="#preview">界面预览</a>
+        <a href="#run">本地运行</a>
+        <a class="nav-button" href="https://github.com/fanlin455/patho-cot">查看源码</a>
+      </div>
+    </nav>
+
+    <div class="hero-content wrap" id="top">
+      <div class="hero-copy">
+        <p class="eyebrow">PATHOLOGY × COMPUTER VISION × LLM</p>
+        <h1>让病理分析过程<br><span>更清晰、更可解释</span></h1>
+        <p class="lead">Patho-COT 将图像质控、器官识别、细胞检测、病变判定、亚型分类与中文报告生成组织成一套六步引导式流程。</p>
+        <div class="hero-actions">
+          <a class="button primary" href="#preview">查看系统界面</a>
+          <a class="button secondary" href="https://github.com/fanlin455/patho-cot#本地运行">本地部署说明</a>
+        </div>
+        <div class="notice" role="note">
+          <strong>展示站说明</strong>
+          <span>本页是 GitHub Pages 静态展示，不执行医疗图像推理，不可用于临床诊断。</span>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="orb orb-a"></div>
+        <div class="orb orb-b"></div>
+        <div class="scope-card">
+          <div class="scope-top"><span></span><span></span><span></span></div>
+          <img src="./assets/home.png" alt="Patho-COT 系统首页预览">
+        </div>
+        <div class="metric metric-a"><b>6</b><span>步可解释流程</span></div>
+        <div class="metric metric-b"><b>AI</b><span>结构化中文报告</span></div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="section wrap" id="pipeline">
+      <div class="section-heading">
+        <p class="eyebrow">从输入到报告</p>
+        <h2>六步引导式病理分析</h2>
+        <p>每一步展示独立结果和关键指标，便于回看、演示与研究验证。</p>
+      </div>
+      <div class="steps">
+        <article><span>01</span><h3>质量检测</h3><p>对焦、染色、组织占比与可用性评分。</p></article>
+        <article><span>02</span><h3>器官分类</h3><p>识别组织来源，呈现 Top-5 概率分布。</p></article>
+        <article><span>03</span><h3>细胞检测</h3><p>定位病变与非病变细胞，输出标注图。</p></article>
+        <article><span>04</span><h3>病变性质</h3><p>给出正常/异常概率与实验性热力图。</p></article>
+        <article><span>05</span><h3>组织亚型</h3><p>分类组织亚型，展示置信度与概率。</p></article>
+        <article><span>06</span><h3>AI 报告</h3><p>本地模型组织结构化中文研究报告。</p></article>
+      </div>
+    </section>
+
+    <section class="section gallery-section" id="preview">
+      <div class="wrap">
+        <div class="section-heading light">
+          <p class="eyebrow">系统预览</p>
+          <h2>一个界面，承载完整研究链路</h2>
+          <p>支持单图引导、多图批量分析、历史回看和报告整理。</p>
+        </div>
+        <div class="gallery">
+          <figure class="wide"><img src="./assets/detail.png" alt="分步诊断详情界面" loading="lazy"><figcaption>分步诊断与结果回看</figcaption></figure>
+          <figure><img src="./assets/multi.png" alt="多图批量分析界面" loading="lazy"><figcaption>多图批量分析</figcaption></figure>
+          <figure><img src="./assets/report.png" alt="AI 报告界面" loading="lazy"><figcaption>结构化 AI 报告</figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section wrap" id="run">
+      <div class="run-grid">
+        <div>
+          <p class="eyebrow">本地完整版</p>
+          <h2>使用 GPU 运行真实推理</h2>
+          <p>完整系统由 FastAPI、PyTorch 和多个视觉/语言模型构成。仓库不收录大体积权重、历史数据库和用户上传内容。</p>
+          <ul class="requirements">
+            <li><b>GPU</b><span>NVIDIA，建议 ≥ 8GB 显存</span></li>
+            <li><b>Python</b><span>3.10–3.12（64 位）</span></li>
+            <li><b>存储</b><span>完整安装约 12GB</span></li>
+          </ul>
+        </div>
+        <div class="terminal" aria-label="启动命令示例">
+          <div class="terminal-top"><span></span><span></span><span></span><em>PowerShell</em></div>
+          <pre><code><i># 配置模型根目录</i>
+$env:PATHO_COT_MODEL_ROOT = (Get-Location).Path
+
+<i># 启动 FastAPI 服务</i>
+Set-Location patho_cot_web
+python -m uvicorn app:app `
+  --host 0.0.0.0 --port 8001</code></pre>
+          <a href="https://github.com/fanlin455/patho-cot#本地运行">阅读完整部署说明 →</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <div><b>Patho-COT · 智析病理</b><p>科研与教学演示项目</p></div>
+      <p>仅供科研和教学参考，不可作为临床诊断依据。</p>
+    </div>
+  </footer>
+</body>
+</html>
+

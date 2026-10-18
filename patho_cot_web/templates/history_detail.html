@@ -1,0 +1,133 @@
+﻿{% extends "base.html" %}
+{% set active_page = "history" %}
+
+{% block title %}诊断详情 - 智析病理{% endblock %}
+{% block header_title %}诊断详情{% endblock %}
+{% block header_subtitle %}{% if record %}编号 #{{ record.id }} · {{ record.created_at }}{% endif %}{% endblock %}
+
+{% block extra_head %}
+<style>
+    #reportContent h2 { font-size: 1.2rem; font-weight: 700; margin-top: 1.2rem; margin-bottom: 0.5rem; padding-bottom: 0.25rem; border-bottom: 1px solid #e5e7eb; }
+    #reportContent h3 { font-size: 1.05rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.4rem; }
+    #reportContent p { margin-bottom: 0.5rem; line-height: 1.6; }
+    #reportContent ul { padding-left: 1.2rem; margin: 0.3rem 0; }
+    #reportContent table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 0.875rem; }
+    #reportContent th { background: #f9fafb; font-weight: 600; text-align: left; padding: 0.4rem 0.75rem; border-bottom: 2px solid #d1d5db; }
+    #reportContent td { padding: 0.35rem 0.75rem; border-bottom: 1px solid #e5e7eb; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<a href="/history" class="inline-block mb-4 text-sm text-blue-600 hover:underline">← 返回历史记录</a>
+
+{% if record %}
+<div class="space-y-4">
+
+    <!-- 基本信息 -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+            <div><div class="text-xs text-gray-400 mb-1">分析时间</div><div class="font-semibold text-gray-900">{{ record.created_at }}</div></div>
+            <div><div class="text-xs text-gray-400 mb-1">分析模式</div><div class="font-semibold text-gray-900">{{ '多 patch 批量分析' if record.mode == 'multi' else '单图分析' }}</div></div>
+            <div class="sm:col-span-2"><div class="text-xs text-gray-400 mb-1">原始文件</div><div class="font-semibold text-gray-900 break-all">{{ record.filename }}</div></div>
+        </div>
+        {% if record.description %}
+        <div class="mt-3 pt-3 border-t border-gray-100 text-sm">
+            <div class="text-xs text-gray-400 mb-1">病情描述</div>
+            <div class="text-gray-700 whitespace-pre-wrap">{{ record.description }}</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 多 patch 汇总（如有） -->
+    {% if multi_summary and multi_summary.summary %}
+    {% set s = multi_summary.summary %}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="p-4 border-b bg-gray-50 font-semibold text-gray-900">多 patch 汇总</div>
+        <div class="p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-center text-sm">
+            <div class="metric-card"><div class="text-xs text-gray-500">总 patch 数</div><div class="mt-1 text-xl font-bold">{{ s.total_patches }}</div></div>
+            <div class="metric-card"><div class="text-xs text-gray-500">合格 patch</div><div class="mt-1 text-xl font-bold text-emerald-600">{{ s.usable_patches }}</div></div>
+            <div class="metric-card"><div class="text-xs text-gray-500">病变细胞总数</div><div class="mt-1 text-xl font-bold text-red-600">{{ s.total_lesion_count }}</div></div>
+            <div class="metric-card"><div class="text-xs text-gray-500">主导器官</div><div class="mt-1 text-xl font-bold text-blue-600">{{ s.top_organ_cn or '-' }}</div></div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 五个分析步骤 -->
+    {% for sid in [1, 2, 3, 4, 5] %}
+    {% set d = steps.get(sid) %}
+    {% if d %}
+    {% set titles = ['切片质量检测', '器官分类', '细胞检测与分割', '病变性质判定', '组织亚型分类'] %}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="p-4 border-b bg-gray-50">
+            <span class="font-semibold text-gray-900">Step {{ sid }} · {{ titles[sid - 1] }}</span>
+        </div>
+        <div class="p-4">
+            {% if sid == 1 %}
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                    <div><div class="text-2xl font-bold {{ 'text-green-600' if d.is_usable else 'text-red-600' }}">{{ d.usability_score }}</div><div class="text-xs text-gray-500 mt-1">可用性</div></div>
+                    <div><div class="text-2xl font-bold text-teal-600">{{ d.focus_score }}</div><div class="text-xs text-gray-500 mt-1">对焦</div></div>
+                    <div><div class="text-2xl font-bold text-teal-600">{{ d.stain_score }}</div><div class="text-xs text-gray-500 mt-1">染色</div></div>
+                    <div><div class="text-2xl font-bold text-teal-600">{{ ((d.tissue_ratio or 0) * 100)|round(1) }}%</div><div class="text-xs text-gray-500 mt-1">组织占比</div></div>
+                </div>
+                {% if d.fail_reasons %}
+                <div class="mt-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">未通过原因：{{ d.fail_reasons|join('；') }}</div>
+                {% endif %}
+            {% elif sid == 2 %}
+                <div class="text-sm">识别器官：<span class="font-semibold text-blue-700">{{ d.top_organ_cn or d.top_organ }}</span>
+                    {% if d.top_prob is not none %}（置信度 {{ (d.top_prob * 100)|round(2) }}%）{% endif %}</div>
+                {% if d.chart_url %}<img src="{{ d.chart_url }}" alt="器官分类图" class="mt-3 rounded-lg border border-gray-100 max-w-sm w-full">{% endif %}
+            {% elif sid == 3 %}
+                <div class="grid grid-cols-3 gap-4 text-center">
+                    <div><div class="text-2xl font-bold text-red-600">{{ d.lesion_count }}</div><div class="text-xs text-gray-500">病变细胞</div></div>
+                    <div><div class="text-2xl font-bold text-green-600">{{ d.non_lesion_count }}</div><div class="text-xs text-gray-500">非病变细胞</div></div>
+                    <div><div class="text-2xl font-bold text-gray-600">{{ d.total_boxes }}</div><div class="text-xs text-gray-500">总检测数</div></div>
+                </div>
+                {% if d.roi_image_url %}<img src="{{ d.roi_image_url }}" alt="细胞检测图" class="mt-3 rounded-lg border border-gray-100 max-w-md w-full">{% endif %}
+            {% elif sid == 4 %}
+                <div class="text-sm">病变性质：<span class="font-semibold {{ 'text-red-600' if d.top_nature == 'Abnormal' else 'text-green-600' }}">{{ d.top_nature_cn or d.top_nature }}</span>
+                    {% if d.top_prob is not none %}（置信度 {{ (d.top_prob * 100)|round(2) }}%）{% endif %}</div>
+                {% if d.chart_url %}<img src="{{ d.chart_url }}" alt="病变性质图" class="mt-3 rounded-lg border border-gray-100 max-w-sm w-full">{% endif %}
+            {% elif sid == 5 %}
+                <div class="text-sm">组织亚型：<span class="font-semibold text-amber-600">{{ d.top_subtype_cn or d.top_subtype }}</span>
+                    {% if d.top_prob is not none %}（置信度 {{ (d.top_prob * 100)|round(2) }}%）{% endif %}</div>
+                {% if d.chart_url %}<img src="{{ d.chart_url }}" alt="亚型分类图" class="mt-3 rounded-lg border border-gray-100 max-w-sm w-full">{% endif %}
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    <!-- AI 报告 -->
+    {% if record.report %}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="p-4 border-b bg-gray-50 font-semibold text-gray-900">AI 诊断报告</div>
+        <div class="p-4"><div id="reportContent" class="prose prose-sm max-w-none text-gray-700"></div></div>
+    </div>
+    {% endif %}
+
+</div>
+{% else %}
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+    <p class="text-gray-500">记录不存在或已被删除。</p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+{% if record and record.report %}
+(function () {
+    const raw = {{ record.report | tojson }};
+    const el = document.getElementById('reportContent');
+    if (!el) return;
+    if (typeof marked !== 'undefined') {
+        el.innerHTML = marked.parse(raw);
+    } else {
+        el.textContent = raw;
+    }
+})();
+{% endif %}
+</script>
+{% endblock %}

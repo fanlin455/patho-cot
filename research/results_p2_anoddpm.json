@@ -1,0 +1,9 @@
+{
+  "auroc": 0.6684954088269005,
+  "aupr": 0.6741659921077204,
+  "n_test": 791,
+  "resolution": 64,
+  "steps": 1500,
+  "normal_train": 3025,
+  "gcn_reference_auc": 0.874
+}

@@ -1,0 +1,172 @@
+﻿{% extends "base.html" %}
+{% set active_page = "diagnose" %}
+
+{% block title %}智析病理 - 第3步 细胞检测{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="/static/assets/wizard.css?v=cube1">
+<style>
+/* 3D 浏览器 iframe 进入浏览器全屏时铺满视口 */
+#explorerFrame:fullscreen { width:100vw; height:100vh; min-height:0; border-radius:0; background:#05060f; }
+#explorerFrame:-webkit-full-screen { width:100vw; height:100vh; min-height:0; border-radius:0; background:#05060f; }
+</style>
+{% endblock %}
+{% block header_title %}分步诊断 · 第3步{% endblock %}
+{% block header_subtitle %}YOLOv8 + SAM 细胞检测，与 3D 病理浏览器对照观察{% endblock %}
+
+{% block content %}
+
+<div id="qcFailBanner" class="hidden">
+    ⚠️ 该图片未通过质量检测，以下分析结果<b>可能不准确，不能作为医疗参考</b>。
+</div>
+<div id="taskChip" class="hidden"></div>
+
+<div id="resultCard" class="hidden">
+    <div id="panel3" class="glass spotlight overflow-hidden">
+        <div class="p-4 border-b bg-gray-50 flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600">3</div>
+            <div>
+                <h4 class="font-semibold text-gray-900">细胞检测与分割</h4>
+                <p class="text-xs text-gray-500">YOLOv8 + SAM — 区域细胞证据提取</p>
+            </div>
+            <span id="detectBadge" class="ml-auto px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-700 hidden"></span>
+        </div>
+        <div class="p-6">
+            <!-- 检测结果 / 3D 浏览器 标签页：三维辅助不打断主流程 -->
+            <div class="wz-tabs no-print">
+                <button type="button" class="wz-tab tab-active" data-tab="result">检测结果</button>
+                <button type="button" class="wz-tab" data-tab="explorer">🧫 3D 病理浏览器</button>
+                <a href="/explorer" target="_blank" rel="noopener" id="fullExplorerBtn"
+                   class="wz-tab" style="text-decoration:none;margin-left:auto;">⛶ 全屏打开</a>
+            </div>
+            <div data-tabpanel="result" id="stepBody"></div>
+            <div data-tabpanel="explorer" class="hidden">
+                <iframe id="explorerFrame" title="3D 病理浏览器" loading="lazy"
+                        allow="fullscreen" allowfullscreen></iframe>
+                <p class="explorer-hint">
+                    📎 嵌入说明：细胞检测是流程中唯一同时产出「2D 细胞定位证据」与「空间形态观察诉求」的环节——YOLO 检测框回答“细胞在哪、是否病变”，
+                    3D 浏览器的图层 / 切片 / 测量能力回答“细胞团在空间上如何排列”，两者在此页互为印证；前置的质检、器官分类是全片级评估，
+                    后置的性质、亚型是结论性判定，插入三维操作都会打断推理节奏。3D 视图以标签页形式按需打开（懒加载），不干扰主诊断流程。
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="readyCard" class="hidden">
+    <div class="glass p-6 wz-note">
+        <p class="mb-4">准备进行<b>细胞检测与分割</b>。模型将标注病变与非病变细胞。</p>
+        <button type="button" data-pw="start" class="btn-primary px-6 py-2.5 rounded-lg text-sm font-semibold">开始细胞检测</button>
+    </div>
+</div>
+<div id="emptyState" class="hidden"><div class="glass p-6 wz-note" id="emptyBody"></div></div>
+
+<div id="stepActions" class="mt-6 no-print hidden"></div>
+
+<!-- 新增可视化区：细胞检测分析 -->
+<section class="viz-section">
+    <div class="viz-section-title">细胞检测与分割分析</div>
+    <div class="viz-grid cols-3">
+        <div class="viz-panel viz-span-2">
+            <div class="viz-panel-title"><span class="dot"></span>各类细胞检出计数</div>
+            <div class="viz-chart-box" style="height:220px;"><canvas id="d3CellBar"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot blue"></span>病变 / 非病变比例</div>
+            <div class="viz-chart-box" style="height:220px;"><canvas id="d3LesionDonut"></canvas></div>
+        </div>
+    </div>
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot amber"></span>检测置信度分布</div>
+            <div class="viz-chart-box" style="height:180px;"><canvas id="d3ConfBar"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot green"></span>细胞密度热力（区域）</div>
+            <div class="viz-chart-box" style="height:180px;"><canvas id="d3Density"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot purple"></span>分割指标</div>
+            <div id="d3DiceRing" style="margin-top:14px;"></div>
+        </div>
+    </div>
+</section>
+
+<!-- v2 大屏增强：检测证据 Bento（真实病理照片 + 差异化图表） -->
+<section class="viz-section">
+    <div class="viz-section-title"><span class="diamond"></span>细胞级检测证据 · H&amp;E 镜下实拍<span class="hud-badge ai" style="margin-left:10px;">460 INSTANCES</span><span class="hud-lamp" style="margin-left:8px;"></span></div>
+    <div class="real-bento">
+        <!-- 真实 H&E 病理大图（B-01 实拍） -->
+        <div class="rb-card rb-photo rb-s7 rb-r2">
+            <img src="/static/medical/B-01.jpg?v=real1" alt="H&E 染色腺管样结构">
+            <span class="rb-corner tl"></span><span class="rb-corner tr"></span><span class="rb-corner bl"></span><span class="rb-corner br"></span>
+            <span class="rb-code">REAL · H&amp;E ADENOCARCINOMA / B-01</span>
+            <div class="rb-cap"><b>腺管样结构 · H&amp;E 染色镜下实拍</b><span>YOLOv8 检测 + SAM 实例分割 · 460 个细胞实例 · Dice 0.89</span></div>
+        </div>
+        <!-- 细胞实例散点（差异化：置信度 × 核面积） -->
+        <div class="rb-card rb-s5 rb-r2">
+            <div class="ct"><span class="d" style="background:#38bdf8;"></span>细胞实例散点<span class="hud-badge" style="margin-left:auto;">CONF × AREA</span></div>
+            <div class="rb-body"><div class="viz-chart-box" style="height:100%;"><canvas id="d3Bubble"></canvas></div></div>
+        </div>
+        <!-- 检测推理日志（保留） -->
+        <div class="rb-card rb-s12">
+            <div class="ct"><span class="d" style="background:#4ade80;"></span>检测推理日志<span class="hud-lamp" style="margin-left:auto;"></span></div>
+            <div class="rb-body" id="d3Stream"></div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>window.PATHO_STEP = 3;</script>
+<script src="/static/assets/wizard-flow.js?v=cube4"></script>
+<script>
+(function () {
+    var V = window.PathoViz; if (!V) return;
+    var cells = V.mock.cells();
+    V.makeChart('bar', 'd3CellBar', {
+        labels: cells.map(function (c) { return c.name; }),
+        datasets: [{ data: cells.map(function (c) { return c.value; }),
+            backgroundColor: V.PALETTE.slice(0, cells.length), borderRadius: 6, borderSkipped: false }]
+    }, { plugins: { legend: { display: false } } });
+    V.builders.doughnut('d3LesionDonut', ['病变细胞', '非病变细胞'], [142, 318], [V.COLORS.red, V.COLORS.green]);
+    V.makeChart('bar', 'd3ConfBar', {
+        labels: ['<0.5', '0.5-0.7', '0.7-0.85', '0.85-0.95', '>0.95'],
+        datasets: [{ data: [8, 22, 64, 118, 148], backgroundColor: [V.COLORS.red, V.COLORS.amber, V.COLORS.cyan, V.COLORS.teal, V.COLORS.green], borderRadius: 6, borderSkipped: false }]
+    }, { plugins: { legend: { display: false } } });
+    V.makeChart('line', 'd3Density', {
+        labels: ['A1','A2','A3','A4','B1','B2','B3','B4','C1','C2','C3','C4'],
+        datasets: [{ label: '细胞密度', data: [12,18,22,15,8,30,42,28,10,25,38,20],
+            borderColor: V.COLORS.purple, backgroundColor: V.hexToRgba(V.COLORS.purple, 0.15),
+            fill: true, tension: 0.4, pointRadius: 3, borderWidth: 2 }]
+    }, { plugins: { legend: { display: false } } });
+    V.ringProgress('d3DiceRing', 89, V.COLORS.teal, 'Dice 系数');
+
+    // ===== v2 差异化组件：实例散点 + 推理日志 =====
+    function pts(color, n, cx, cy, rx, ry) {
+        var a = [];
+        for (var i = 0; i < n; i++) {
+            a.push({ x: Math.round((cx + (Math.random() - .5) * rx) * 100) / 100,
+                     y: Math.round((cy + (Math.random() - .5) * ry) * 100) / 100,
+                     r: 3 + Math.random() * 7 });
+        }
+        return a;
+    }
+    V.bubble('d3Bubble', { datasets: [
+        { label: '肿瘤细胞', data: pts(0, 26, 0.88, 0.72, 0.2, 0.4), color: V.COLORS.pink },
+        { label: '炎症细胞', data: pts(0, 22, 0.7, 0.4, 0.3, 0.4), color: V.COLORS.amber },
+        { label: '上皮细胞', data: pts(0, 18, 0.75, 0.3, 0.35, 0.3), color: V.COLORS.cyan }
+    ] }, { scales: V.darkScales({
+        x: { min: 0.4, max: 1, title: { display: true, text: '置信度', color: '#64748b' } },
+        y: { min: 0, max: 1, title: { display: true, text: '核面积归一', color: '#64748b' } }
+    }) });
+
+    V.eventStream('d3Stream', [
+        { time: 'T+0.3s', text: 'YOLOv8-x 推理完成，原始框 512 个', level: 'info' },
+        { time: 'T+0.5s', text: 'NMS（IoU 0.45）后保留 460 个实例', level: 'ai' },
+        { time: 'T+0.9s', text: 'SAM ViT-H 对 Top-64 高置信框精分割', level: 'ai' },
+        { time: 'T+1.6s', text: '区域特征图写入 GCN 图节点', level: 'ok' },
+        { time: 'T+2.1s', text: '输出实例掩码 + 类别 + 置信度三元组', level: 'ok' }
+    ]);
+})();
+</script>
+{% endblock %}

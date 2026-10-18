@@ -1,0 +1,146 @@
+﻿{% extends "base.html" %}
+{% set active_page = "diagnose" %}
+
+{% block title %}智析病理 - 第4步 病变性质{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="/static/assets/wizard.css?v=cube1">{% endblock %}
+{% block header_title %}分步诊断 · 第4步{% endblock %}
+{% block header_subtitle %}基于细胞证据判定 Normal / Abnormal{% endblock %}
+
+{% block content %}
+
+<div id="qcFailBanner" class="hidden">
+    ⚠️ 该图片未通过质量检测，以下分析结果<b>可能不准确，不能作为医疗参考</b>。
+</div>
+<div id="taskChip" class="hidden"></div>
+
+<div id="resultCard" class="hidden">
+    <div id="panel4" class="glass spotlight overflow-hidden">
+        <div class="p-4 border-b bg-gray-50 flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-cyan-100 flex items-center justify-center text-cyan-700">4</div>
+            <div>
+                <h4 class="font-semibold text-gray-900">病变性质判定</h4>
+                <p class="text-xs text-gray-500">Phikon 线性头 / GCN 图卷积网络 — Normal / Abnormal</p>
+            </div>
+            <span id="natureBadge" class="ml-auto px-3 py-1 rounded-full text-sm font-semibold hidden"></span>
+        </div>
+        <div id="stepBody" class="p-6"></div>
+    </div>
+</div>
+
+<div id="readyCard" class="hidden">
+    <div class="glass p-6 wz-note">
+        <p class="mb-4">准备进行<b>病变性质判定</b>。模型将结合细胞检测证据给出正常/异常概率。</p>
+        <button type="button" data-pw="start" class="btn-primary px-6 py-2.5 rounded-lg text-sm font-semibold">开始病变性质判定</button>
+    </div>
+</div>
+<div id="emptyState" class="hidden"><div class="glass p-6 wz-note" id="emptyBody"></div></div>
+
+<div id="stepActions" class="mt-6 no-print hidden"></div>
+
+<!-- 新增可视化区：病变性质判定分析 -->
+<section class="viz-section">
+    <div class="viz-section-title">Normal / Abnormal 判定分析</div>
+    <div class="viz-grid cols-3">
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot"></span>性质判定置信度</div>
+            <div id="d4ConfRing" style="margin-top:20px;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot blue"></span>Normal / Abnormal 分布</div>
+            <div class="viz-chart-box" style="height:220px;"><canvas id="d4NatureDonut"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot amber"></span>关键证据权重</div>
+            <div class="viz-chart-box" style="height:220px;"><canvas id="d4Evidence"></canvas></div>
+        </div>
+    </div>
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel viz-span-2">
+            <div class="viz-panel-title"><span class="dot green"></span>性质判定历史趋势</div>
+            <div class="viz-chart-box" style="height:180px;"><canvas id="d4Trend"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot purple"></span>细胞图特征雷达</div>
+            <div class="viz-chart-box" style="height:180px;"><canvas id="d4Radar"></canvas></div>
+        </div>
+    </div>
+</section>
+
+<!-- v2 大屏增强：异常证据 Bento（真实肿瘤细胞照片 + GCN） -->
+<section class="viz-section">
+    <div class="viz-section-title"><span class="diamond"></span>GCN 异常判定 · 真实细胞证据<span class="hud-badge warn" style="margin-left:10px;">ABNORMAL 0.94</span><span class="hud-lamp red" style="margin-left:8px;"></span></div>
+    <div class="real-bento">
+        <!-- GCN 细胞图注意力网络（差异化复杂组件，保留） -->
+        <div class="rb-card rb-s8 rb-r2">
+            <div class="ct"><span class="d" style="background:#a78bfa;"></span>细胞图注意力网络（GCN 消息传播）<span class="hud-badge ai" style="margin-left:auto;">MESSAGE PASSING</span></div>
+            <div class="rb-body" id="d4Graph"></div>
+        </div>
+        <!-- 真实肿瘤细胞电镜（B-02 实拍） -->
+        <div class="rb-card rb-photo rb-s4 rb-r2">
+            <img src="/static/medical/B-02.jpg?v=real1" alt="肿瘤细胞电镜">
+            <span class="rb-corner tl"></span><span class="rb-corner br"></span>
+            <span class="rb-code" style="color:#fca5a5;border-color:rgba(248,113,113,.4);">REAL · TUMOR CELLS / B-02</span>
+            <div class="rb-cap"><b>肿瘤细胞电镜实拍</b><span>异常证据 · Abnormal 0.94 · 460 图节点</span></div>
+        </div>
+        <!-- 异常证据权重排行（保留） -->
+        <div class="rb-card rb-s4">
+            <div class="ct"><span class="d" style="background:#f472b6;"></span>异常证据权重</div>
+            <div class="rb-body" id="d4Rank"></div>
+        </div>
+        <!-- 判定日志（保留） -->
+        <div class="rb-card rb-s8">
+            <div class="ct"><span class="d" style="background:#4ade80;"></span>判定链路日志<span class="hud-lamp red" style="margin-left:auto;"></span></div>
+            <div class="rb-body" id="d4Stream"></div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>window.PATHO_STEP = 4;</script>
+<script src="/static/assets/wizard-flow.js?v=cube4"></script>
+<script>
+(function () {
+    var V = window.PathoViz; if (!V) return;
+    V.ringProgress('d4ConfRing', 94, V.COLORS.red, 'Abnormal 置信度');
+    V.builders.doughnut('d4NatureDonut', ['Normal', 'Abnormal'], [120, 187], [V.COLORS.green, V.COLORS.red]);
+    V.makeChart('bar', 'd4Evidence', {
+        labels: ['核异型', '核分裂', '结构紊乱', '浸润', '坏死'],
+        datasets: [{ data: [0.82, 0.71, 0.88, 0.65, 0.45],
+            backgroundColor: [V.COLORS.red, V.COLORS.amber, V.COLORS.purple, V.COLORS.blue, V.COLORS.cyan],
+            borderRadius: 6, borderSkipped: false }]
+    }, { indexAxis: 'y', plugins: { legend: { display: false } }, scales: V.darkScales({ x: { max: 1 } }) });
+    V.makeChart('line', 'd4Trend', {
+        labels: V.mock.labels(20),
+        datasets: [
+            { label: 'Normal', data: V.mock.trend(20, 40, 12), borderColor: V.COLORS.green, backgroundColor: V.hexToRgba(V.COLORS.green, 0.1), fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2 },
+            { label: 'Abnormal', data: V.mock.trend(20, 55, 15), borderColor: V.COLORS.red, backgroundColor: V.hexToRgba(V.COLORS.red, 0.1), fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2 }
+        ]
+    }, { plugins: { legend: V.darkLegend({ position: 'top' }) } });
+    V.builders.radar('d4Radar', ['核质比', '核大小', '染色质', '核仁', '有丝分裂', '结构'],
+        [{ label: '当前', data: [0.85, 0.78, 0.72, 0.68, 0.80, 0.90], color: V.COLORS.teal }]);
+
+    // ===== v2 差异化组件：GCN 节点图 + 证据排行 + 日志 =====
+    V.nodeGraph('d4Graph', [
+        { label: '肿瘤核', value: 0.95, color: V.COLORS.red },
+        { label: '炎症', value: 0.6, color: V.COLORS.amber },
+        { label: '腺体', value: 0.7, color: V.COLORS.cyan },
+        { label: '间质', value: 0.45, color: V.COLORS.slate },
+        { label: '坏死灶', value: 0.8, color: V.COLORS.pink },
+        { label: '边界区', value: 0.55, color: V.COLORS.purple }
+    ], [[0, 1, 0.5], [0, 2, 0.9], [0, 4, 0.8], [2, 3, 0.4], [4, 5, 0.7], [1, 3, 0.3], [0, 5, 0.6], [2, 5, 0.5]]);
+    V.rankList('d4Rank', [
+        { name: '核异型性', value: 92 }, { name: '结构紊乱', value: 88 },
+        { name: '浸润证据', value: 74 }, { name: '异常核分裂', value: 71 },
+        { name: '坏死评分', value: 58 }, { name: '间质反应', value: 41 }
+    ], { percent: true });
+    V.eventStream('d4Stream', [
+        { time: 'T+0.4s', text: '构建 460 节点细胞图（kNN k=6）', level: 'info' },
+        { time: 'T+0.9s', text: 'GCN 两层消息传播，注意力权重收敛', level: 'ai' },
+        { time: 'T+1.3s', text: '异常分数 0.94 > 决策阈值 0.80', level: 'warn' },
+        { time: 'T+1.5s', text: '激活异常扩散模型生成定位热力', level: 'ai' },
+        { time: 'T+1.9s', text: '性质判定：Abnormal，证据链已记录', level: 'ok' }
+    ]);
+})();
+</script>
+{% endblock %}

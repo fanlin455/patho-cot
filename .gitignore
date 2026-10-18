@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Editors / operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Runtime and patient/user-generated data
+*.db
+*.sqlite
+*.sqlite3
+patho_cot_web/static/uploads/**
+patho_cot_web/static/results/**
+!patho_cot_web/static/uploads/.gitkeep
+!patho_cot_web/static/results/.gitkeep
+
+# Model weights and large generated artifacts
+models/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.bin
+*.npz
+*.zip
+*.7z
+*.rar
+*.mp4
+
+# Local configuration / secrets
+.env
+.env.*
+!.env.example
+config.local.yaml
+

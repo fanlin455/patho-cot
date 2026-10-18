@@ -1,0 +1,155 @@
+﻿{% extends "base.html" %}
+{% set active_page = "diagnose" %}
+
+{% block title %}智析病理 - 第2步 器官分类{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="/static/assets/wizard.css?v=cube1">{% endblock %}
+{% block header_title %}分步诊断 · 第2步{% endblock %}
+{% block header_subtitle %}识别组织器官来源（19 类器官）{% endblock %}
+
+{% block content %}
+
+<div id="qcFailBanner" class="hidden">
+    ⚠️ 该图片未通过质量检测，以下分析结果<b>可能不准确，不能作为医疗参考</b>。
+</div>
+<div id="taskChip" class="hidden"></div>
+
+<div id="resultCard" class="hidden">
+    <div id="panel2" class="glass spotlight overflow-hidden">
+        <div class="p-4 border-b bg-gray-50 flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">2</div>
+            <div>
+                <h4 class="font-semibold text-gray-900">器官分类</h4>
+                <p class="text-xs text-gray-500">Phikon-v2 / ViT-B/16 — 识别组织器官来源</p>
+            </div>
+            <span id="organBadge" class="ml-auto px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 text-blue-700 hidden"></span>
+        </div>
+        <div id="stepBody" class="p-6"></div>
+    </div>
+</div>
+
+<div id="readyCard" class="hidden">
+    <div class="glass p-6 wz-note">
+        <p class="mb-4">准备进行<b>器官分类</b>。模型将识别该切片的组织器官来源。</p>
+        <button type="button" data-pw="start" class="btn-primary px-6 py-2.5 rounded-lg text-sm font-semibold">开始器官分类</button>
+    </div>
+</div>
+<div id="emptyState" class="hidden"><div class="glass p-6 wz-note" id="emptyBody"></div></div>
+
+<div id="stepActions" class="mt-6 no-print hidden"></div>
+
+<!-- 新增可视化区：器官分类分析 -->
+<section class="viz-section">
+    <div class="viz-section-title">器官来源分类分析</div>
+    <div class="viz-grid cols-3">
+        <div class="viz-panel viz-span-2">
+            <div class="viz-panel-title"><span class="dot"></span>Top-5 器官置信度</div>
+            <div class="viz-chart-box" style="height:220px;"><canvas id="d2TopBar"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot blue"></span>器官分布</div>
+            <div class="viz-chart-box" style="height:220px;"><canvas id="d2OrganPie"></canvas></div>
+        </div>
+    </div>
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot amber"></span>分类置信度</div>
+            <div id="d2ConfRing" style="margin-top:20px;"></div>
+        </div>
+        <div class="viz-panel viz-span-2">
+            <div class="viz-panel-title"><span class="dot green"></span>19 类器官历史命中分布</div>
+            <div class="viz-chart-box" style="height:180px;"><canvas id="d2HistBar"></canvas></div>
+        </div>
+    </div>
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot purple"></span>分类特征权重雷达</div>
+            <div class="viz-chart-box" style="height:200px;"><canvas id="d2FeatRadar"></canvas></div>
+        </div>
+    </div>
+
+    <!-- v2 大屏增强 -->
+    <div class="viz-section-title" style="margin-top:20px;"><span class="diamond"></span>ViT 器官溯源 · 19 类 Attention 证据<span class="hud-badge ai" style="margin-left:10px;">TOP-1 0.87</span></div>
+    <div class="viz-grid cols-3">
+        <div class="viz-panel viz-span-2">
+            <div class="hud-hd"><span class="hud-code">ORG-EVID</span><span class="hud-badge ai">ViT-B/16 ATTENTION</span></div>
+            <div class="viz-panel-title"><span class="dot cyan"></span>器官分类 Attention 证据图</div>
+            <div id="d2Gallery" style="margin-top:4px;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">ORG-G</span></div>
+            <div class="viz-panel-title"><span class="dot"></span>Top-1 置信仪表</div>
+            <div id="d2Gauge" style="display:flex;justify-content:center;"></div>
+        </div>
+    </div>
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">ORG-P</span></div>
+            <div class="viz-panel-title"><span class="dot blue"></span>Top-6 类概率画像</div>
+            <div class="viz-chart-box" style="height:190px;"><canvas id="d2Polar"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">ORG-R</span></div>
+            <div class="viz-panel-title"><span class="dot amber"></span>类间差距排行</div>
+            <div id="d2Rank" style="margin-top:10px;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">ORG-LOG</span><span class="hud-lamp"></span></div>
+            <div class="viz-panel-title"><span class="dot green"></span>分类日志</div>
+            <div id="d2Stream"></div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>window.PATHO_STEP = 2;</script>
+<script src="/static/assets/wizard-flow.js?v=cube4"></script>
+<script>
+(function () {
+    var V = window.PathoViz; if (!V) return;
+    V.makeChart('bar', 'd2TopBar', {
+        labels: ['结肠', '胃', '肺', '肝', '乳腺'],
+        datasets: [{
+            data: [0.87, 0.06, 0.03, 0.02, 0.01],
+            backgroundColor: [V.COLORS.teal, V.COLORS.cyan, V.COLORS.blue, V.COLORS.purple, V.COLORS.amber],
+            borderRadius: 6, borderSkipped: false
+        }]
+    }, {
+        indexAxis: 'y', plugins: { legend: { display: false } },
+        scales: V.darkScales({ x: { max: 1, ticks: { callback: function (v) { return (v * 100) + '%'; } } } })
+    });
+    var og = V.mock.organs().slice(0, 6);
+    V.builders.doughnut('d2OrganPie', og.map(function (o) { return o.name; }), og.map(function (o) { return o.value; }));
+    V.ringProgress('d2ConfRing', 87, V.COLORS.teal, 'Top-1 置信度');
+    V.makeChart('bar', 'd2HistBar', {
+        labels: V.ORGANS.slice(0, 10),
+        datasets: [{ data: V.ORGANS.slice(0, 10).map(function () { return Math.round(Math.random() * 300 + 50); }),
+            backgroundColor: V.COLORS.blue, borderRadius: 6, borderSkipped: false }]
+    }, { plugins: { legend: { display: false } } });
+    V.builders.radar('d2FeatRadar', ['纹理', '颜色', '形状', '密度', '边缘', '空间'],
+        [{ label: '权重', data: [0.92, 0.78, 0.85, 0.70, 0.88, 0.65], color: V.COLORS.purple }]);
+
+    // ===== v2 组件 =====
+    V.gallery('d2Gallery', [
+        { src: '/static/results/organ_008bf620.png', title: 'Attention #1', tag: '结肠 0.87', color: V.COLORS.cyan },
+        { src: '/static/results/organ_0783b842.png', title: 'Attention #2', tag: '胃 0.06', color: V.COLORS.slate },
+        { src: '/static/results/organ_09e53f54.png', title: 'Attention #3', tag: '肺 0.03', color: V.COLORS.purple },
+        { src: '/static/results/organ_089dae7e.png', title: 'Attention #4', tag: '肝 0.02', color: V.COLORS.amber }
+    ]);
+    V.gauge('d2Gauge', 87, { label: '19 类 Softmax', color: V.COLORS.cyan });
+    V.polar('d2Polar', ['结肠', '胃', '肺', '肝', '乳腺', '前列腺'],
+        [0.87, 0.06, 0.03, 0.02, 0.01, 0.005],
+        [V.COLORS.teal, V.COLORS.cyan, V.COLORS.blue, V.COLORS.amber, V.COLORS.pink, V.COLORS.purple]);
+    V.rankList('d2Rank', [
+        { name: '结肠', value: 87 }, { name: '胃', value: 6 }, { name: '肺', value: 3 },
+        { name: '肝', value: 2 }, { name: '乳腺', value: 1 }, { name: '其他', value: 1 }
+    ], { percent: true });
+    V.eventStream('d2Stream', [
+        { time: 'T+0.2s', text: 'ViT-B/16 输出 768 维 patch token', level: 'ai' },
+        { time: 'T+0.5s', text: 'phikon 头部分类 logits 归一化', level: 'info' },
+        { time: 'T+0.7s', text: 'Top-1 结肠 0.87，熵 0.61（低不确定度）', level: 'ok' },
+        { time: 'T+0.8s', text: '注意力热区集中于黏膜腺体层', level: 'ai' }
+    ]);
+})();
+</script>
+{% endblock %}

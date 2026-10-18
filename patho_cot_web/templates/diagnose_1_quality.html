@@ -1,0 +1,210 @@
+﻿{% extends "base.html" %}
+{% set active_page = "diagnose" %}
+
+{% block title %}智析病理 - 第1步 质量检测{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="/static/assets/wizard.css?v=cube1">{% endblock %}
+{% block header_title %}分步诊断 · 第1步{% endblock %}
+{% block header_subtitle %}上传病理图像并进行切片质量检测（可用性 / 对焦 / 染色）{% endblock %}
+
+{% block content %}
+
+<div id="qcFailBanner" class="hidden">
+    ⚠️ 该图片未通过质量检测，以下分析结果<b>可能不准确，不能作为医疗参考</b>。
+</div>
+
+<div id="taskChip" class="hidden"></div>
+
+<!-- ============ 上传（流程起点） ============ -->
+<div id="uploadCard">
+    <div class="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
+        <div class="glass glass-hover p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">📤 第一步：上传一张病理图像</h3>
+            <form id="uploadForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">选择病理图像（.png / .jpg / .tif / .svs / .ndpi）</label>
+                    <input type="file" id="imageFile" accept="image/*,.svs,.ndpi,.tiff,.tif,.mrxs" class="hidden">
+                    <div class="flex items-center gap-4 border border-gray-300 rounded-lg p-1.5">
+                        <div id="gooPickFile">
+                            <button type="button" id="pickFileBtn"
+                                class="goo-dark-btn text-sm font-semibold px-5 py-2.5">选择文件</button>
+                        </div>
+                        <span id="fileName" class="text-sm text-gray-500 truncate">未选择文件</span>
+                        <button type="button" id="scanBtn" class="scan-btn whitespace-nowrap ml-auto">📱 扫码上传</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">病情描述（可选，将写入最终 AI 报告）</label>
+                    <textarea id="descriptionInput" rows="3" placeholder="输入患者病情描述、临床症状等信息..."
+                        class="block w-full text-sm border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"></textarea>
+                </div>
+                <div id="gooSubmit" class="flex items-center gap-3">
+                    <button type="submit" id="submitBtn"
+                        class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed font-semibold px-6 py-2.5 rounded-lg">
+                        <span id="btnText">开始分析</span>
+                        <span id="btnSpinner" class="hidden ml-2 inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    </button>
+                </div>
+            </form>
+            <div class="mt-5 pt-4 border-t border-gray-100">
+                <span class="text-sm text-gray-500">试试样例图：</span>
+                <div class="flex flex-wrap gap-2 mt-2">
+                    <button type="button" data-sample="colon.png" class="sample-btn goo-dark-btn px-3 py-1.5 font-medium text-sm">结肠样例</button>
+                    <button type="button" data-sample="kidney.png" class="sample-btn goo-dark-btn px-3 py-1.5 font-medium text-sm">肾脏样例</button>
+                    <button type="button" data-sample="skin.png" class="sample-btn goo-dark-btn px-3 py-1.5 font-medium text-sm">皮肤样例</button>
+                </div>
+            </div>
+        </div>
+
+        <a href="/multi" class="glass glass-hover border-2 border-dashed p-6 transition-all flex flex-col justify-center text-center" style="border-color:rgba(56,189,248,.35);">
+            <div class="text-3xl mb-2">🗂️</div>
+            <div class="text-lg font-semibold text-gray-900">多图分析</div>
+            <div class="text-sm text-gray-500 mt-1">一次上传多个 patch，批量分析并汇总</div>
+            <div class="mt-3 text-sm font-semibold" style="color:#38bdf8;">点击这里 →</div>
+        </a>
+    </div>
+</div>
+
+<!-- ============ 质检结果 ============ -->
+<div id="resultCard" class="hidden">
+    <div id="panel1" class="glass spotlight overflow-hidden">
+        <div class="p-4 border-b bg-gray-50 flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-teal-100 flex items-center justify-center text-teal-600">1</div>
+            <div>
+                <h4 class="font-semibold text-gray-900">切片质量检测</h4>
+                <p class="text-xs text-gray-500">PathProfilerQC2 — 可用性 / 对焦 / 染色评估</p>
+            </div>
+            <span id="qcBadge" class="ml-auto"></span>
+        </div>
+        <div id="stepBody" class="p-6"></div>
+    </div>
+</div>
+
+<div id="readyCard" class="hidden"><div class="glass p-6 wz-note">准备就绪。</div></div>
+<div id="emptyState" class="hidden"><div class="glass p-6 wz-note" id="emptyBody"></div></div>
+
+<div id="stepActions" class="mt-6 room-actions no-print hidden"></div>
+
+<!-- 质检未通过"仍然继续"弹窗 -->
+<div id="qcConfirmModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+        <div class="flex items-start gap-3">
+            <div class="text-3xl">⚠️</div>
+            <div>
+                <h3 class="font-semibold text-gray-900 text-lg">质量检测未通过</h3>
+                <p class="mt-2 text-sm text-gray-700 leading-relaxed">
+                    图片质检不合格，所分析的数据可能不准确，<b>不能作为医疗参考</b>。
+                </p>
+                <p class="mt-2 text-xs text-gray-400">建议重新上传一张更清晰的图像。确定要继续分析吗？</p>
+            </div>
+        </div>
+        <div class="mt-5 flex justify-end gap-2">
+            <button type="button" data-qc="no" class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">取消</button>
+            <button type="button" data-qc="ok" class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold">仍然继续</button>
+        </div>
+    </div>
+</div>
+
+<!-- 新增可视化区：质量检测分析 -->
+<section class="viz-section">
+    <div class="viz-section-title">切片质量维度分析</div>
+    <div class="viz-grid cols-3">
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot"></span>四维质量雷达</div>
+            <div class="viz-chart-box" style="height:220px;"><canvas id="d1Radar"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot blue"></span>对焦 / 染色评分</div>
+            <div class="viz-chart-box" style="height:220px;"><canvas id="d1Focus"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot amber"></span>质检通过率</div>
+            <div id="d1QcRing" style="margin-top:20px;"></div>
+        </div>
+    </div>
+    <div class="viz-grid cols-2" style="margin-top:14px;">
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot purple"></span>质量缺陷分布</div>
+            <div class="viz-chart-box" style="height:200px;"><canvas id="d1Defect"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot green"></span>近 7 日通过率趋势</div>
+            <div class="viz-chart-box" style="height:200px;"><canvas id="d1Trend"></canvas></div>
+        </div>
+    </div>
+
+    <!-- v2 大屏增强 -->
+    <div class="viz-section-title" style="margin-top:20px;"><span class="diamond"></span>PathProfiler QC2 精密质检台<span class="hud-badge" style="margin-left:10px;">QC PASS</span><span class="hud-lamp" style="margin-left:8px;"></span></div>
+    <div class="viz-grid cols-3">
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">QC-G</span></div>
+            <div class="viz-panel-title"><span class="dot"></span>切片可用性仪表</div>
+            <div id="d1Gauge" style="display:flex;justify-content:center;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">QC-W</span></div>
+            <div class="viz-panel-title"><span class="dot blue"></span>组织区域覆盖率</div>
+            <div id="d1Water" style="display:flex;justify-content:center;margin-top:12px;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">QC-RANK</span></div>
+            <div class="viz-panel-title"><span class="dot amber"></span>缺陷类型频次</div>
+            <div id="d1Rank" style="margin-top:10px;"></div>
+        </div>
+    </div>
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel viz-span-2">
+            <div class="hud-hd"><span class="hud-code">QC-HM</span><span class="hud-badge warn">7 批 × 6 维</span></div>
+            <div class="viz-panel-title"><span class="dot pink"></span>批次质量矩阵</div>
+            <div id="d1Heat" style="margin-top:4px;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">QC-LOG</span><span class="hud-lamp"></span></div>
+            <div class="viz-panel-title"><span class="dot green"></span>质检日志</div>
+            <div id="d1Stream"></div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>window.PATHO_STEP = 1;</script>
+<script src="/static/assets/wizard-flow.js?v=cube4"></script>
+<script>
+(function () {
+    var V = window.PathoViz; if (!V) return;
+    V.builders.radar('d1Radar', ['可用性', '对焦', '染色', '组织占比'],
+        [{ label: '当前切片', data: [0.92, 0.88, 0.85, 0.78], color: V.COLORS.teal },
+         { label: '平均水平', data: [0.86, 0.82, 0.80, 0.72], color: V.COLORS.slate }]);
+    V.makeChart('bar', 'd1Focus', {
+        labels: ['对焦清晰', '染色均匀', '染色强度', '组织占比', '无气泡'],
+        datasets: [{ data: [88, 82, 90, 76, 95], backgroundColor: V.COLORS.cyan, borderRadius: 6, borderSkipped: false }]
+    }, { plugins: { legend: { display: false } }, scales: V.darkScales({ y: { max: 100 } }) });
+    V.ringProgress('d1QcRing', 91, V.COLORS.green, '质检通过率');
+    V.builders.doughnut('d1Defect', ['模糊', '染色偏浅', '染色偏深', '气泡', '组织过少'], [12, 8, 6, 4, 3]);
+    V.builders.line('d1Trend', V.mock.labels(7), [88, 90, 87, 92, 95, 93, 96], V.COLORS.green, '通过率(%)');
+
+    // ===== v2 组件 =====
+    V.gauge('d1Gauge', 92, { label: 'PathProfiler QC2', color: V.COLORS.teal });
+    V.waterBall('d1Water', 78, '组织覆盖率', V.COLORS.cyan);
+    V.rankList('d1Rank', [
+        { name: '轻度模糊', value: 42 }, { name: '染色偏浅', value: 31 },
+        { name: '气泡干扰', value: 18 }, { name: '组织偏少', value: 14 },
+        { name: '边缘折叠', value: 9 }, { name: '染色污染', value: 5 }
+    ]);
+    var q1rows = ['第1批', '第2批', '第3批', '第4批', '第5批', '第6批', '第7批'];
+    var q1cols = ['可用性', '对焦', '染色', '亮度', '组织量', '清洁度'];
+    V.heatmap('d1Heat', {
+        rowLabels: q1rows, colLabels: q1cols,
+        matrix: q1rows.map(function () { return q1cols.map(function () { return Math.round(Math.random() * 100) / 100; }); }),
+        raw: false, color: V.COLORS.teal
+    });
+    V.eventStream('d1Stream', [
+        { time: 'T+0.1s', text: 'PathProfilerQC2 模型加载完成', level: 'info' },
+        { time: 'T+0.4s', text: '对焦评分 0.88 · 拉普拉斯方差达标', level: 'ok' },
+        { time: 'T+0.7s', text: 'H&E 染色分离：H 峰/E 峰正常', level: 'ok' },
+        { time: 'T+1.0s', text: '检出 2 处微小气泡（面积 <1%）', level: 'warn' },
+        { time: 'T+1.2s', text: '综合可用性 0.92 → 放行进入步骤 2', level: 'ai' }
+    ]);
+})();
+</script>
+{% endblock %}
