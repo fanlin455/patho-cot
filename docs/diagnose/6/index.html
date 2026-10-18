@@ -1,0 +1,777 @@
+﻿﻿﻿﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智析病理 - 第6步 AI 综合报告</title>
+    <script src="/patho-cot/static/js/tailwind.js"></script>
+    <link rel="stylesheet" href="/patho-cot/static/assets/viz.css?v=viz3">
+    <style>
+        html, body { width: 100%; height: 100%; overflow-x: hidden; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+            background: #070d18; color: #e2e8f0;
+            min-height: 100vh; position: relative;
+        }
+
+        /* ========== 背景层（G 方案：青蓝深底 + 细胞流体动态） ========== */
+        .bg-container { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
+        .bg-base {
+            position: absolute; inset: 0;
+            background: linear-gradient(180deg, #070d18 0%, #0a1422 55%, #0b1a28 100%);
+        }
+        #cell-fluid-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
+        .bg-noise {
+            position: absolute; inset: 0; opacity: 0.025; pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/patho-cot/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/patho-cot/%3E%3C/svg%3E");
+        }
+
+        /* ========== 侧边栏 ========== */
+        aside.sidebar {
+            position: fixed; top: 0; left: 0; width: 240px; height: 100vh;
+            background: rgba(8,16,30,0.60);
+            backdrop-filter: blur(24px) saturate(180%);
+            -webkit-backdrop-filter: blur(24px) saturate(180%);
+            border-right: 1px solid rgba(45,212,191,0.10);
+            z-index: 100; display: flex; flex-direction: column;
+        }
+        .sidebar-logo {
+            padding: 20px 20px 18px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            display: flex; align-items: center; gap: 12px;
+        }
+        .sidebar-logo-icon {
+            width: 40px; height: 40px;
+            background: linear-gradient(135deg, #0d9488, #0891b2);
+            border-radius: 11px; display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: 800; font-size: 16px;
+            box-shadow: 0 0 24px rgba(13,148,136,0.45);
+            position: relative; overflow: hidden;
+        }
+        .sidebar-logo-icon::after {
+            content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.3) 50%, transparent 60%);
+            animation: logoShine 3s ease-in-out infinite;
+        }
+        @keyframes logoShine { 0%,100%{ transform: translateX(-100%) rotate(45deg); } 50%{ transform: translateX(100%) rotate(45deg); } }
+        .sidebar-logo-text h1 { font-size: 16px; font-weight: 700; color: #f1f5f9; }
+        .sidebar-logo-text p { font-size: 10px; color: #64748b; margin-top: 2px; }
+        .sidebar-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
+        .nav-section-label {
+            font-size: 10px; font-weight: 700; color: #64748b;
+            padding: 10px 12px 8px; text-transform: uppercase; letter-spacing: 1px;
+        }
+        .gooey-nav { position: relative; }
+        .nav-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 11px 14px; margin: 2px 0; border-radius: 10px; cursor: pointer;
+            font-size: 13px; color: #94a3b8; position: relative; z-index: 3;
+            transition: color .25s ease; font-weight: 500; text-decoration: none;
+        }
+        .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+        .nav-item:hover { color: #e2e8f0; }
+        .nav-item.active { color: #67e8f9; font-weight: 700; }
+        .nav-badge {
+            margin-left: auto; font-size: 10px; padding: 2px 8px; border-radius: 100px;
+            background: rgba(45,212,191,0.22); color: #5eead4; font-weight: 600;
+        }
+        .nav-item:not(.active) .nav-badge { background: rgba(6,182,212,.18); color: #7dd3fc; }
+        .sidebar-footer { padding: 14px 16px; border-top: 1px solid rgba(255,255,255,0.06); }
+        .system-status-card {
+            display: flex; align-items: center; gap: 10px;
+            background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.18);
+            border-radius: 12px; padding: 10px 12px;
+        }
+        .status-indicator {
+            width: 8px; height: 8px; border-radius: 50%; background: #10b981;
+            box-shadow: 0 0 10px #10b981; animation: statusPulse 2s ease-in-out infinite;
+        }
+        @keyframes statusPulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+        .status-text .t1 { font-size: 11px; font-weight: 600; color: #6ee7b7; }
+        .status-text .t2 { font-size: 10px; color: #64748b; margin-top: 2px; }
+
+        /* ========== 顶部栏 ========== */
+        .topbar {
+            position: fixed; top: 0; left: 240px; right: 0; height: 60px;
+            background: rgba(5,6,15,0.55); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255,255,255,0.05); z-index: 90;
+            display: flex; align-items: center; justify-content: space-between; padding: 0 32px;
+        }
+        .topbar-left { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #cbd5e1; }
+        .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981; animation: statusPulse 2s infinite; }
+        .topbar-subtitle { color: #475569; font-size: 11.5px; }
+        .topbar-right { display: flex; align-items: center; gap: 10px; }
+        .topbar-avatar {
+            width: 32px; height: 32px; border-radius: 50%;
+            background: linear-gradient(135deg, #0d9488, #0891b2);
+            display: flex; align-items: center; justify-content: center;
+            color: #fff; font-size: 12px; font-weight: 700;
+        }
+
+        /* ========== 主内容区 ========== */
+        /* main-content 从 sidebar 右边缘（240px）开始，占满右侧剩余空间。
+           子元素通过 flex + align-items:center 在这个剩余空间里水平居中。 */
+        main.main-content {
+            margin-left: 240px;
+            margin-right: 0;
+            width: calc(100% - 240px);
+            flex-shrink: 0;
+            padding: 80px 32px 40px;
+            position: relative;
+            z-index: 10;
+            min-height: 100vh;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        main.main-content > * { width: 100%; max-width: 1120px; flex-shrink: 0; }
+        main.main-content > .w-100 { max-width: 100%; }
+
+        .page-header { margin-bottom: 24px; }
+        .page-title { font-size: 22px; font-weight: 700; color: #f1f5f9; }
+        .page-desc { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+
+        /* 单图页：上传房间在右侧区域垂直+水平居中，避免贴左上角 */
+        #roomUpload.active {
+            display: flex; flex-direction: column; justify-content: center;
+            min-height: calc(100vh - 210px);
+        }
+        #roomUpload.active > #gooUploadGrid { width: 100%; }
+        /* 多图页：未出结果时，上传大模块垂直居中（子项已有确定宽度，不会收缩） */
+        @supports (selector(:has(*))) {
+            main.main-content:has(#resultsArea.hidden) > #gooBackNav { flex-shrink: 0; }
+            main.main-content:has(#resultsArea.hidden) > #multiUploadCard { margin-top: auto; margin-bottom: auto; }
+        }
+
+        /* ========== 深色工具类重映射（兼容旧版 Tailwind 页面） ========== */
+        main .text-gray-900, main .text-slate-900 { color: #f1f5f9 !important; }
+        main .text-gray-800, main .text-slate-800 { color: #e2e8f0 !important; }
+        main .text-gray-700, main .text-slate-700 { color: #cbd5e1 !important; }
+        main .text-gray-600, main .text-gray-500, main .text-slate-500, main .text-slate-600 { color: #94a3b8 !important; }
+        main .text-gray-400, main .text-slate-400 { color: #64748b !important; }
+        main .bg-white { background: rgba(255,255,255,.09) !important; }
+        main .bg-gray-50, main .bg-slate-50 { background: rgba(255,255,255,.05) !important; }
+        main .bg-gray-100, main .bg-slate-100 { background: rgba(255,255,255,.08) !important; }
+        main .bg-gray-200, main .bg-slate-200 { background: rgba(255,255,255,.12) !important; }
+        main .border-gray-100, main .border-slate-100 { border-color: rgba(255,255,255,.06) !important; }
+        main .border-gray-200, main .border-slate-200 { border-color: rgba(255,255,255,.1) !important; }
+        main .border-gray-300, main .border-slate-300 { border-color: rgba(255,255,255,.15) !important; }
+        main textarea, main input[type="text"], main input[type="file"], main select {
+            background: rgba(255,255,255,.06) !important; color: #e2e8f0 !important;
+            border-color: rgba(255,255,255,.15) !important;
+        }
+        main textarea::placeholder { color: #64748b !important; }
+        .glass {
+            background: rgba(255,255,255,.08) !important; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(255,255,255,.12) !important;
+            box-shadow: 0 8px 30px rgba(0,0,0,.25); border-radius: 1rem;
+        }
+        .glass-hover { transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+        .glass-hover:hover { transform: translateY(-3px); box-shadow: 0 18px 45px rgba(0,0,0,.35); border-color: rgba(45,212,191,.35) !important; }
+        .btn-primary {
+            background: linear-gradient(135deg, #0d9488, #0891b2) !important; color: #fff !important;
+            box-shadow: 0 6px 18px rgba(13,148,136,.32); transition: transform .25s ease, box-shadow .25s ease, filter .2s ease;
+        }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(8,145,178,.45); filter: brightness(1.06); }
+        .btn-primary:active:not(:disabled) { transform: scale(.96); }
+        .btn-ghost {
+            background: rgba(255,255,255,.08) !important; border: 1px solid rgba(255,255,255,.12) !important;
+            color: #cbd5e1 !important; transition: transform .2s ease, box-shadow .25s ease, background .2s ease;
+        }
+        .btn-ghost:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,.25); background: rgba(255,255,255,.12) !important; }
+        .btn-warn {
+            background: linear-gradient(135deg, #f59e0b, #f97316) !important; color: #fff !important;
+            box-shadow: 0 6px 18px rgba(245,158,11,.35); transition: transform .2s ease, box-shadow .25s ease, filter .2s ease;
+        }
+        .btn-warn:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(245,158,11,.5); filter: brightness(1.05); }
+        /* 骨架屏深色 */
+        .skeleton { background: linear-gradient(90deg, rgba(255,255,255,.06) 25%, rgba(255,255,255,.1) 37%, rgba(255,255,255,.06) 63%); background-size: 400% 100%; animation: skeleton 1.2s ease infinite; border-radius: .5rem; }
+        @keyframes skeleton { 0%{background-position:100% 50%;} 100%{background-position:0 50%;} }
+        /* 步骤条深色 */
+        .step-connector { height: 2px; flex: 1; min-width: 12px; background: rgba(255,255,255,.1); transition: background .4s ease; border-radius: 999px; }
+        .step-connector.done { background: #22c55e; }
+        /* 扫码按钮 */
+        .scan-btn {
+            background: rgba(13,148,136,.12); border: 1px solid rgba(45,212,191,.25);
+            color: #5eead4; border-radius: 10px; padding: 8px 16px; font-size: 12px; font-weight: 600;
+            cursor: pointer; transition: all .2s ease;
+        }
+        .scan-btn:hover { background: rgba(6,182,212,.22); color: #fff; box-shadow: 0 4px 16px rgba(6,182,212,.3); }
+        /* SpotlightCard */
+        .spotlight { position: relative; overflow: hidden; }
+        .spotlight::before {
+            content: ""; position: absolute; inset: 0; z-index: 0;
+            background: radial-gradient(360px circle at var(--mx,50%) var(--my,50%), var(--spotlight-color, rgba(13,148,136,.18)), transparent 65%);
+            opacity: 0; transition: opacity .3s ease; pointer-events: none;
+        }
+        .spotlight:hover::before { opacity: 1; }
+        .spotlight > * { position: relative; z-index: 1; }
+        /* 标题微光 */
+        .shine-text { background: linear-gradient(90deg, #94a3b8 0%, #5eead4 45%, #7dd3fc 55%, #94a3b8 100%); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shine 3s linear infinite; }
+        @keyframes shine { to { background-position: 200% center; } }
+
+        /* ========== 旧版 GooeyNav 按钮兜底（保留 API 兼容） ========== */
+        .goo-dark-btn {
+            background: #0b0f17 !important; color: #fff !important;
+            border-color: transparent !important; box-shadow: none !important; border-radius: 100vw !important;
+        }
+        .gooey-nav-old { position: relative; --goo-dark: #0b0f17; --goo-radius: 100vw; }
+        .gooey-nav-old > *:not(.goo-effect) { position: relative; z-index: 3; }
+        .gooey-nav-old .goo-gooed { color: #fff !important; }
+        .gooey-nav-old .goo-pill-solid {
+            background: var(--goo-dark) !important; border-radius: var(--goo-radius) !important; box-shadow: none !important;
+        }
+        .goo-effect {
+            position: absolute; left: 0; top: 0; width: 0; height: 0;
+            opacity: 1; pointer-events: none; display: grid; place-items: center; z-index: 1;
+        }
+        .goo-effect.filter { filter: url(#goo); -webkit-filter: url(#goo); will-change: transform; }
+        .goo-effect.filter::after {
+            content: ''; position: absolute; inset: 0; background: var(--goo-dark);
+            transform: scale(0); opacity: 0; z-index: -1; border-radius: var(--goo-radius);
+        }
+        .goo-effect.active::after { animation: pill .22s ease both; }
+        @keyframes pill { to { transform: scale(1); opacity: 1; } }
+        .goo-effect .particle, .goo-effect .point {
+            display: block; opacity: 0; width: 20px; height: 20px; border-radius: 100%; transform-origin: center;
+        }
+        .goo-effect .particle {
+            --time: 5s; position: absolute; top: calc(50% - 8px); left: calc(50% - 8px);
+            animation: particle calc(var(--time)) ease 1 -350ms;
+        }
+        .goo-effect .point { background: var(--color); opacity: 1; animation: point calc(var(--time)) ease 1 -350ms; }
+        @keyframes particle {
+            0% { transform: rotate(0deg) translate(calc(var(--start-x)), calc(var(--start-y))); opacity: 1; animation-timing-function: cubic-bezier(.55,0,1,.45); }
+            70% { transform: rotate(calc(var(--rotate) * .5)) translate(calc(var(--end-x) * 1.2), calc(var(--end-y) * 1.2)); opacity: 1; animation-timing-function: ease; }
+            85% { transform: rotate(calc(var(--rotate) * .66)) translate(calc(var(--end-x)), calc(var(--end-y))); opacity: 1; }
+            100% { transform: rotate(calc(var(--rotate) * 1.2)) translate(calc(var(--end-x) * .5), calc(var(--end-y) * .5)); opacity: 1; }
+        }
+        @keyframes point {
+            0% { transform: scale(0); opacity: 0; animation-timing-function: cubic-bezier(.55,0,1,.45); }
+            25% { transform: scale(calc(var(--scale) * .25)); }
+            38% { opacity: 1; }
+            65% { transform: scale(var(--scale)); opacity: 1; animation-timing-function: ease; }
+            85% { transform: scale(var(--scale)); opacity: 1; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+
+        /* AI 报告排版深色覆盖（index/multi/history_detail 共用 #reportContent） */
+        main #reportContent { color: #cbd5e1; }
+        main #reportContent strong { color: #f1f5f9 !important; }
+        main #reportContent h2 { border-bottom-color: rgba(255,255,255,.1) !important; color: #e2e8f0; }
+        main #reportContent h3, main #reportContent h4 { color: #e2e8f0; }
+        main #reportContent th { background: rgba(255,255,255,.06) !important; border-bottom-color: rgba(255,255,255,.2) !important; color: #e2e8f0; }
+        main #reportContent td { border-bottom-color: rgba(255,255,255,.08) !important; }
+
+        /* ========== 打印 ========== */
+        @media print {
+            aside.sidebar, .topbar, .bg-container, .no-print { display: none !important; }
+            main.main-content { margin-left: 0 !important; padding: 0 !important; }
+            body { background: #fff !important; color: #000 !important; }
+        }
+    </style>
+    <link rel="stylesheet" href="/patho-cot/static/assets/wizard.css?v=cube1">
+    <script>
+    /* 六步向导立方体转场：新文档第一帧前预设入场方向，主内容区随即播立方体翻入。
+       wizard-common.js 加载后会兜底重设并在动画结束后清理该属性。 */
+    (function () {
+        try {
+            if (!/^\/diagnose\/\d/.test(location.pathname)) return;
+            var d = sessionStorage.getItem('wzCubeDir') === 'back' ? 'back' : 'fwd';
+            document.documentElement.setAttribute('data-cube-enter', d);
+        } catch (e) {}
+    })();
+    </script>
+    <script src="/patho-cot/static/js/marked.min.js"></script>
+</head>
+<body class="flex min-h-screen">
+<script>
+/* 登录守卫：固定账号登录态，7 天过期；服务重启后启动标识变化强制重登；点头像退出 */
+(function () {
+  function clearAuth() {
+    try {
+      ['patho_auth','patho_auth_ts','patho_user','patho_boot_id'].forEach(function (k) {
+        localStorage.removeItem(k);
+      });
+    } catch (e) {}
+  }
+  function authed() {
+    try {
+      if (localStorage.getItem('patho_auth') !== '1') return false;
+      var ts = parseInt(localStorage.getItem('patho_auth_ts') || '0', 10);
+      if (!ts || Date.now() - ts > 7*24*3600*1000) {
+        clearAuth();
+        return false;
+      }
+      return true;
+    } catch (e) { return false; }
+  }
+  function logout() { clearAuth(); location.replace('/patho-cot/'); }
+  // 服务重启校验：bootId 与登录时记录的不一致 → 立即退回封面
+  function bootGuard(next) {
+    fetch('/patho-cot/api/boot-id', {cache:'no-store'})
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        var saved = null;
+        try { saved = localStorage.getItem('patho_boot_id'); } catch (e) {}
+        if (d && saved && d.bootId !== saved) { logout(); return; }
+        next();
+      })
+      .catch(function () { next(); });  // 接口异常不拦页面，避免误伤
+  }
+  if (!authed()) { location.replace('/patho-cot/'); return; }
+  bootGuard(function () {
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('.topbar-avatar') : null;
+      if (a && confirm('退出登录并返回封面？')) logout();
+    });
+  });
+})();
+</script>
+
+    <!-- SVG goo 滤镜（旧版按钮兜底用） -->
+    <svg width="0" height="0" style="position:absolute;left:0;top:0;overflow:hidden" aria-hidden="true" focusable="false">
+        <defs>
+            <filter id="goo" x="-150%" y="-150%" width="400%" height="400%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/patho-cot/>
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9" result="goo"/patho-cot/>
+                <feBlend in="SourceGraphic" in2="goo"/patho-cot/>
+            </filter>
+        </defs>
+    </svg>
+
+    <!-- 背景层：青蓝深底 + 细胞流体 + 星空 + 网格 -->
+    <div class="bg-container">
+        <div class="bg-base"></div>
+        <div class="bg-noise"></div>
+        <div class="bg-grid"></div>
+        <div class="bg-vignette"></div>
+    </div>
+
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <div class="sidebar-logo-icon">P</div>
+            <div class="sidebar-logo-text">
+                <h1>Patho-COT</h1>
+                <p>多模态智能诊断平台</p>
+            </div>
+        </div>
+        <div class="sidebar-nav">
+            <div class="gooey-nav" id="homeNav">
+                <a href="/patho-cot/dashboard" class="nav-item " data-index="0">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/patho-cot/></svg>
+                    总览仪表盘
+                </a>
+            </div>
+            <div class="nav-section-label" style="margin-top:14px;">诊断流程</div>
+            <div class="gooey-nav" id="mainNav">
+                <a href="/patho-cot/diagnose/1" class="nav-item active" id="wizNavParent" data-index="0">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/patho-cot/></svg>
+                    分步诊断
+                    <span class="wz-caret">▼</span>
+                </a>
+                <a href="/patho-cot/multi" class="nav-item " data-index="1">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/patho-cot/></svg>
+                    多图分析
+                </a>
+            </div>
+            <div class="wiz-subnav" id="wizSubnav">
+                <div class="wz-sub is-locked" data-step="1"><span class="wz-dot">1</span><span class="wz-name">质量检测</span></div>
+                <div class="wz-sub is-locked" data-step="2"><span class="wz-dot">2</span><span class="wz-name">器官分类</span></div>
+                <div class="wz-sub is-locked" data-step="3"><span class="wz-dot">3</span><span class="wz-name">细胞检测</span></div>
+                <div class="wz-sub is-locked" data-step="4"><span class="wz-dot">4</span><span class="wz-name">病变性质</span></div>
+                <div class="wz-sub is-locked" data-step="5"><span class="wz-dot">5</span><span class="wz-name">亚型提示</span></div>
+                <div class="wz-sub is-locked" data-step="6"><span class="wz-dot">6</span><span class="wz-name">AI 报告</span></div>
+            </div>
+            <div class="nav-section-label" style="margin-top:20px;">数据中心</div>
+            <div class="gooey-nav" id="dataNav">
+                <a href="/patho-cot/history" class="nav-item " data-index="0" style="padding:10px 14px;">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/patho-cot/></svg>
+                    诊断历史
+                </a>
+                <a href="/patho-cot/datasets" class="nav-item " data-index="1" style="padding:10px 14px;">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/patho-cot/></svg>
+                    数据集
+                </a>
+            </div>
+            <div class="nav-section-label" style="margin-top:20px;">系统</div>
+            <div class="gooey-nav" id="sysNav">
+                <a href="/patho-cot/models" class="nav-item " data-index="0">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/patho-cot/></svg>
+                    模型与部署
+                </a>
+            </div>
+        </div>
+        <div class="sidebar-footer">
+            <div class="system-status-card">
+                <div class="status-indicator"></div>
+                <div class="status-text">
+                    <div class="t1">系统运行中</div>
+                    <div class="t2">GPU 负载 72% · 正常</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- 顶部栏 -->
+    <header class="topbar">
+        <div class="topbar-left">
+            <span class="live-dot"></span>
+            <span>分步诊断 · 第6步</span>
+            <span class="topbar-subtitle">· 汇总前五步证据，由本地大模型生成 AI 综合分析报告</span>
+        </div>
+        <div class="topbar-right">
+            <div class="topbar-avatar">Dr</div>
+        </div>
+    </header>
+
+    <!-- 主内容 -->
+    <main class="main-content">
+        
+
+<div id="qcFailBanner" class="hidden">
+    ⚠️ 该图片未通过质量检测，本报告<b>可能不准确，不能作为医疗参考</b>。
+</div>
+<div id="taskChip" class="hidden"></div>
+
+<div id="resultCard" class="hidden">
+    <div id="panel6" class="glass spotlight overflow-hidden">
+        <div class="p-4 border-b bg-gray-50 flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-teal-100 flex items-center justify-center text-teal-700">6</div>
+            <div>
+                <h4 class="font-semibold text-gray-900">AI 综合分析报告</h4>
+            </div>
+            <div class="ml-auto flex items-center gap-2 no-print">
+                <span id="reportBadge" class="px-3 py-1 rounded-full text-sm font-semibold bg-teal-100 text-teal-700 hidden"></span>
+                <button id="copyReportBtn" type="button" class="hidden px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm hover:bg-gray-50 transition-colors">复制报告</button>
+                <button id="printReportBtn" type="button" class="hidden px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm hover:bg-gray-50 transition-colors">打印 / 存 PDF</button>
+            </div>
+        </div>
+        <div class="p-6">
+            <div id="reportContent">
+                <p class="text-gray-400 text-center">报告尚未生成。</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="readyCard" class="hidden">
+    <div class="glass p-6 wz-note">
+        <p class="mb-1 text-base font-semibold text-gray-900">准备生成 AI 综合分析报告</p>
+        <p class="mb-5 text-sm text-gray-500">将汇总前五步检测结果与病情描述，调用本地大模型（Ollama）生成报告。</p>
+        <button type="button" data-pw="genreport" class="btn-primary px-6 py-2.5 rounded-lg text-sm font-semibold">生成 AI 报告</button>
+    </div>
+</div>
+<div id="emptyState" class="hidden"><div class="glass p-6 wz-note" id="emptyBody"></div></div>
+
+<div id="stepActions" class="mt-6 no-print hidden"></div>
+
+<!-- 新增可视化区：全流程诊断汇总 -->
+<section class="viz-section">
+    <div class="viz-section-title">全流程诊断指标汇总</div>
+    <div class="viz-kpi-grid">
+        <div class="viz-kpi"><div class="icon">🧬</div><div><div class="val">结肠</div><div class="label">器官来源</div></div></div>
+        <div class="viz-kpi"><div class="icon">🔴</div><div><div class="val">Abnormal</div><div class="label">病变性质</div></div></div>
+        <div class="viz-kpi"><div class="icon">🧫</div><div><div class="val">腺癌</div><div class="label">组织亚型</div></div></div>
+        <div class="viz-kpi"><div class="icon">⏱️</div><div><div class="val">8.6s</div><div class="label">总耗时</div></div></div>
+    </div>
+    <div class="viz-grid cols-3">
+        <div class="viz-panel viz-span-2">
+            <div class="viz-panel-title"><span class="dot"></span>六级流水线漏斗</div>
+            <div class="viz-chart-box" style="height:220px;"><canvas id="d6Funnel"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot blue"></span>各步置信度</div>
+            <div class="viz-chart-box" style="height:220px;"><canvas id="d6ConfBar"></canvas></div>
+        </div>
+    </div>
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot amber"></span>综合诊断置信度</div>
+            <div id="d6Ring" style="margin-top:14px;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot green"></span>细胞证据分布</div>
+            <div class="viz-chart-box" style="height:180px;"><canvas id="d6Cells"></canvas></div>
+        </div>
+        <div class="viz-panel">
+            <div class="viz-panel-title"><span class="dot purple"></span>模型贡献度</div>
+            <div class="viz-chart-box" style="height:180px;"><canvas id="d6Model"></canvas></div>
+        </div>
+    </div>
+
+    <!-- v2 大屏增强：桑基全流程 + 仪表 + 证据画廊 -->
+    <div class="viz-section-title" style="margin-top:20px;"><span class="diamond"></span>Chain-of-Thought 全链路可解释流<span class="hud-badge ai" style="margin-left:10px;">TRACEABLE</span></div>
+    <div class="viz-panel">
+        <div class="hud-hd"><span class="hud-code">FLOW-6S</span><span class="hud-lamp"></span><span class="hud-badge">SANKEY</span></div>
+        <div id="d6Sankey" style="height:250px;"></div>
+    </div>
+
+    <div class="viz-grid cols-4" style="margin-top:14px;">
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">M-01</span></div>
+            <div class="viz-panel-title"><span class="dot"></span>诊断置信度</div>
+            <div id="d6G1" style="display:flex;justify-content:center;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">M-02</span></div>
+            <div class="viz-panel-title"><span class="dot blue"></span>分割 Dice</div>
+            <div id="d6G2" style="display:flex;justify-content:center;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">M-03</span></div>
+            <div class="viz-panel-title"><span class="dot amber"></span>质控评分</div>
+            <div id="d6G3" style="display:flex;justify-content:center;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">M-04</span><span class="hud-badge">SAM</span></div>
+            <div class="viz-panel-title"><span class="dot green"></span>区域覆盖率</div>
+            <div id="d6Water" style="display:flex;justify-content:center;margin-top:10px;"></div>
+        </div>
+    </div>
+
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel viz-span-2">
+            <div class="hud-hd"><span class="hud-code">EVIDENCE</span><span class="hud-badge ai">4 AI MODULES</span></div>
+            <div class="viz-panel-title"><span class="dot pink"></span>四级模型证据图像</div>
+            <div id="d6Gallery" style="margin-top:4px;"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">WEIGHT</span></div>
+            <div class="viz-panel-title"><span class="dot purple"></span>诊断依据权重</div>
+            <div id="d6Rank" style="margin-top:6px;"></div>
+        </div>
+    </div>
+
+    <div class="viz-grid cols-3" style="margin-top:14px;">
+        <div class="viz-panel viz-span-2">
+            <div class="hud-hd"><span class="hud-code">LOG</span><span class="hud-lamp"></span></div>
+            <div class="viz-panel-title"><span class="dot green"></span>报告生成链路日志</div>
+            <div id="d6Stream"></div>
+        </div>
+        <div class="viz-panel">
+            <div class="hud-hd"><span class="hud-code">TERMS</span><span class="hud-badge ai">NLP</span></div>
+            <div class="viz-panel-title"><span class="dot cyan"></span>结论术语云</div>
+            <div id="d6Words" style="min-height:210px;display:flex;align-items:center;"></div>
+        </div>
+    </div>
+</section>
+
+    </main>
+
+    <!-- 细胞流体动态背景 + React Bits 效果库 + 扫码上传：须先于页面脚本加载 -->
+    <script src="/patho-cot/static/assets/vendor/chart.umd.min.js"></script>
+    <script src="/patho-cot/static/assets/bg-animated.js?v=G2"></script>
+    <script src="/patho-cot/static/assets/vendor/qrcode.js"></script>
+    <script src="/patho-cot/static/assets/rb-effects.js?v=G2"></script>
+    <script src="/patho-cot/static/assets/wizard-common.js?v=cube1"></script>
+    <script src="/patho-cot/static/assets/wiz-subnav.js?v=sub1"></script>
+    <script src="/patho-cot/static/assets/viz-helpers.js?v=viz6"></script>
+
+    
+<script>window.PATHO_STEP = 6;</script>
+<script src="/patho-cot/static/assets/wizard-flow.js?v=cube4"></script>
+<script>
+(function () {
+    var V = window.PathoViz; if (!V) return;
+    // 漏斗（用渐宽条形近似）
+    V.makeChart('bar', 'd6Funnel', {
+        labels: ['质控', '器官', '检测', '性质', '亚型', '报告'],
+        datasets: [{
+            data: [100, 98, 95, 92, 88, 90],
+            backgroundColor: [V.COLORS.teal, V.COLORS.cyan, V.COLORS.blue, V.COLORS.purple, V.COLORS.amber, V.COLORS.pink],
+            borderRadius: 6, borderSkipped: false
+        }]
+    }, { plugins: { legend: { display: false } }, scales: V.darkScales({ y: { max: 100, ticks: { callback: function (v) { return v + '%'; } } } }) });
+    V.makeChart('bar', 'd6ConfBar', {
+        labels: ['质控', '器官', '检测', '性质', '亚型'],
+        datasets: [{ data: [0.95, 0.87, 0.91, 0.94, 0.62],
+            backgroundColor: V.COLORS.blue, borderRadius: 6, borderSkipped: false }]
+    }, { indexAxis: 'y', plugins: { legend: { display: false } }, scales: V.darkScales({ x: { max: 1 } }) });
+    V.ringProgress('d6Ring', 93, V.COLORS.teal, '综合置信度');
+    var cells = V.mock.cells();
+    V.builders.doughnut('d6Cells', cells.map(function (c) { return c.name; }), cells.map(function (c) { return c.value; }));
+    V.makeChart('bar', 'd6Model', {
+        labels: ['QC2', 'ViT', 'YOLO+SAM', 'GCN', 'MBNet'],
+        datasets: [{ data: [0.12, 0.18, 0.32, 0.24, 0.14],
+            backgroundColor: V.PALETTE.slice(0, 5), borderRadius: 6, borderSkipped: false }]
+    }, { plugins: { legend: { display: false } }, scales: V.darkScales({ y: { max: 1 } }) });
+
+    // ===== v2 大屏组件 =====
+    V.sankey('d6Sankey', [
+        { name: '输入', nodes: [{ name: 'Patch ×1', value: 100, color: V.COLORS.slate }] },
+        { name: '① 质控', nodes: [{ name: '合格', value: 95, color: V.COLORS.teal }, { name: '复检', value: 5, color: V.COLORS.amber }] },
+        { name: '② 器官', nodes: [{ name: '结肠', value: 87, color: V.COLORS.cyan }, { name: '其他', value: 8, color: V.COLORS.slate }] },
+        { name: '③ 检测', nodes: [{ name: '肿瘤细胞', value: 64, color: V.COLORS.pink }, { name: '炎症细胞', value: 22, color: V.COLORS.amber }, { name: '正常', value: 9, color: V.COLORS.green }] },
+        { name: '④ 性质', nodes: [{ name: 'Abnormal', value: 94, color: V.COLORS.red }] },
+        { name: '⑤ 亚型', nodes: [{ name: '腺癌', value: 62, color: V.COLORS.purple }, { name: '其他亚型', value: 32, color: V.COLORS.blue }] },
+        { name: '结论', nodes: [{ name: '结肠腺癌 93%', value: 93, color: V.COLORS.teal }] }
+    ], { height: 250 });
+    V.gauge('d6G1', 93, { label: '六模型集成', color: V.COLORS.teal });
+    V.gauge('d6G2', 91, { label: 'SAM 分割', color: V.COLORS.cyan });
+    V.gauge('d6G3', 95, { label: 'PathProfiler', color: V.COLORS.amber });
+    V.waterBall('d6Water', 76, '病灶覆盖率', V.COLORS.green);
+    V.gallery('d6Gallery', [
+        { src: '/patho-cot/static/results/organ_008bf620.png', title: '①器官 ViT', tag: '结肠 0.87', color: V.COLORS.cyan },
+        { src: '/patho-cot/static/results/detect_02246fe9.png', title: '②细胞 YOLO', tag: '×23', color: V.COLORS.pink },
+        { src: '/patho-cot/static/results/nature_000cab75.png', title: '③性质 GCN', tag: 'Abn 0.94', color: V.COLORS.red },
+        { src: '/patho-cot/static/results/subtype_0105bd21.png', title: '④亚型 MBNet', tag: '腺癌 0.62', color: V.COLORS.purple }
+    ]);
+    V.rankList('d6Rank', [
+        { name: '细胞证据', value: 92 }, { name: '腺体结构', value: 85 },
+        { name: '核异型性', value: 78 }, { name: '浸润证据', value: 71 },
+        { name: '临床吻合', value: 66 }, { name: '影像支持', value: 58 }
+    ], { percent: true });
+    V.eventStream('d6Stream', [
+        { time: '14:32:05', text: '汇总 6 个模型证据向量，权重融合完成', level: 'ai' },
+        { time: '14:32:06', text: 'GCN 异常得分 0.94 > 阈值 0.80', level: 'warn' },
+        { time: '14:32:06', text: '亚型分类器输出：腺癌概率 0.62', level: 'info' },
+        { time: '14:32:07', text: 'LLM 生成结构化病理报告（中英文）', level: 'ai' },
+        { time: '14:32:07', text: '报告已签章并写入诊断历史数据库', level: 'ok' }
+    ]);
+    V.wordCloud('d6Words', [
+        { text: '结肠腺癌', size: 24, color: V.COLORS.pink }, { text: '中分化', size: 18, color: V.COLORS.amber },
+        { text: '腺管结构', size: 14, color: V.COLORS.cyan }, { text: '核大深染', size: 15 },
+        { text: '浸润', size: 17, color: V.COLORS.red }, { text: '建议免疫组化', size: 12 },
+        { text: '切缘待评估', size: 13 }, { text: '核分裂象', size: 14, color: V.COLORS.purple },
+        { text: '置信度 93%', size: 16, color: V.COLORS.teal }, { text: 'HE 染色', size: 12 },
+        { text: '病理性核分裂', size: 13 }, { text: '随访建议', size: 12 }
+    ]);
+})();
+</script>
+
+
+    <!-- RBGooeyNav 初始化已由 rb-effects.js 内部的 initGooeyNav 自动完成，此处不再手动 new（否则会双胶囊/重复 console 日志） -->
+    <script>
+    // 旧版 IIFE 已移至 rb-effects.js 统一管理，避免重复 init
+
+    /* ---------- 旧版 GooeyNav 按钮兜底（API 兼容） ---------- */
+    (function () {
+        window.GooeyNav = (function () {
+            var animationTime = 320, particleCount = 15, particleDistances = [90,10], particleR = 100, timeVariance = 160, colors = [1,2,3,1,2,3,1,4];
+            function noise(n){ n=(n===undefined?1:n); return n/2-Math.random()*n; }
+            function getXY(distance,pointIndex,totalPoints){
+                var angle=((360+noise(8))/totalPoints)*pointIndex*(Math.PI/180);
+                return [distance*Math.cos(angle),distance*Math.sin(angle)];
+            }
+            function createParticle(i,t,d,r){
+                var rotate=noise(r/10);
+                return { start:getXY(d[0],particleCount-i,particleCount), end:getXY(d[1]+noise(7),particleCount-i,particleCount), time:t, scale:1+noise(0.2), color:colors[Math.floor(Math.random()*colors.length)], rotate:rotate>0?(rotate+r/20)*10:(rotate-r/20)*10 };
+            }
+            function spawn(layer){
+                var d=particleDistances, r=particleR;
+                layer.style.setProperty('--time',(animationTime*2+timeVariance)+'ms');
+                for(var i=0;i<particleCount;i++){
+                    (function(i){
+                        var t=animationTime*2+noise(timeVariance*2);
+                        var p=createParticle(i,t,d,r);
+                        setTimeout(function(){
+                            var particle=document.createElement('span');
+                            var point=document.createElement('span');
+                            particle.className='particle';
+                            particle.style.setProperty('--start-x',p.start[0]+'px');
+                            particle.style.setProperty('--start-y',p.start[1]+'px');
+                            particle.style.setProperty('--end-x',p.end[0]+'px');
+                            particle.style.setProperty('--end-y',p.end[1]+'px');
+                            particle.style.setProperty('--time',p.time+'ms');
+                            particle.style.setProperty('--scale',p.scale);
+                            particle.style.setProperty('--color','var(--color-'+p.color+', #0b0f17)');
+                            particle.style.setProperty('--rotate',p.rotate+'deg');
+                            point.className='point';
+                            particle.appendChild(point);
+                            layer.appendChild(particle);
+                            requestAnimationFrame(function(){layer.classList.add('active');});
+                            setTimeout(function(){if(particle.parentNode)particle.parentNode.removeChild(particle);},t);
+                        },30);
+                    })(i);
+                }
+            }
+            function attach(container,itemsFn,opts){
+                if(!container)return null;
+                opts=opts||{};
+                var outset=opts.outset||0;
+                container.classList.add('gooey-nav-old');
+                if(opts.radius)container.style.setProperty('--goo-radius',opts.radius);
+                var layer=document.createElement('span');
+                layer.className='goo-effect filter';
+                container.appendChild(layer);
+                var current=-1;
+                function positionAt(el){
+                    var cr=container.getBoundingClientRect();
+                    var pos=el.getBoundingClientRect();
+                    layer.style.width=(pos.width+outset*2)+'px';
+                    layer.style.height=(pos.height+outset*2)+'px';
+                    layer.style.transform='translate('+(pos.x-cr.x-outset)+'px,'+(pos.y-cr.y-outset)+'px)';
+                }
+                function moveTo(el,animate){
+                    positionAt(el);
+                    var old=layer.querySelectorAll('.particle');
+                    for(var i=0;i<old.length;i++){if(old[i].parentNode)layer.removeChild(old[i]);}
+                    layer.classList.remove('active');
+                    void layer.offsetWidth;
+                    layer.classList.add('active');
+                    if(animate!==false)spawn(layer);
+                }
+                function paint(list,index){
+                    if(!opts.flipText&&!opts.solidPill)return;
+                    list.forEach(function(el,k){
+                        var on=(k===index);
+                        if(opts.flipText)el.classList.toggle('goo-gooed',on);
+                        if(opts.solidPill){
+                            el.classList.toggle('goo-pill-solid',on);
+                            if(on){el.style.setProperty('background','#0b0f17','important');el.style.setProperty('color','#ffffff','important');el.style.setProperty('border-radius','var(--goo-radius, 100vw)','important');el.style.setProperty('box-shadow','none','important');}
+                            else{el.style.removeProperty('background');el.style.removeProperty('color');el.style.removeProperty('border-radius');el.style.removeProperty('box-shadow');}
+                        }
+                    });
+                }
+                function select(index,animate,force){
+                    var list=itemsFn()||[];
+                    if(index<0||index>=list.length)return;
+                    if(index===current&&!force)return;
+                    current=index;
+                    paint(list,index);
+                    moveTo(list[index],animate);
+                    if(opts.onSelect)opts.onSelect(list[index],index);
+                }
+                function bind(){
+                    (itemsFn()||[]).forEach(function(el,i){
+                        el.classList.add('goo-managed');
+                        el.addEventListener('click',function(e){
+                            var link=(el.tagName==='A')?el:el.querySelector('a');
+                            if(opts.delayNavigate&&link&&!e.metaKey&&!e.ctrlKey&&!e.shiftKey&&!e.altKey){
+                                var href=link.getAttribute('href');
+                                if(href&&href.charAt(0)==='/patho-cot/'){e.preventDefault();select(i,true,true);setTimeout(function(){window.location.href=href;},opts.delayNavigate);return;}
+                            }
+                            select(i,true,true);
+                        });
+                    });
+                }
+                bind();
+                var list=itemsFn()||[];
+                var init=(opts.initial===undefined)?0:opts.initial;
+                if(list.length){current=init;positionAt(list[init]);if(!opts.showOnClickOnly){layer.classList.add('active');paint(list,init);}if(opts.onSelect)opts.onSelect(list[init],init);}
+                window.addEventListener('resize',function(){var l=itemsFn()||[];if(l.length&&current>=0&&current<l.length)positionAt(l[current]);});
+                return {select:select,rebind:bind,resync:function(){var l=itemsFn()||[];var i=(current<0||current>=l.length)?0:current;if(l.length){current=i;positionAt(l[i]);}}};
+            }
+            return {attach:attach};
+        })();
+
+        /* 全站按钮兜底 */
+        window.addEventListener('load',function(){
+            if(!window.GooeyNav)return;
+            var seen=[],groups=[];
+            Array.prototype.forEach.call(document.querySelectorAll('button'),function(b){
+                if(b.classList.contains('goo-managed'))return;
+                if(b.closest('.step-node'))return;
+                b.classList.add('goo-dark-btn');
+                var p=b.parentElement;
+                if(!p||seen.indexOf(p)>=0)return;
+                seen.push(p);groups.push(p);
+            });
+            groups.forEach(function(box){
+                window.GooeyNav.attach(box,function(){return Array.prototype.slice.call(box.querySelectorAll('button'));},{radius:'100vw',outset:8,initial:0,showOnClickOnly:true});
+            });
+        });
+    })();
+    </script>
+</body>
+</html>

@@ -1,119 +1,379 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Patho-COT 智能病理诊断系统项目展示">
-  <title>Patho-COT · 智析病理</title>
-  <link rel="stylesheet" href="./style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Patho-COT 智析病理 · 多模态智能诊断平台</title>
+<link rel="stylesheet" href="/patho-cot/static/assets/viz.css?v=viz3">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root { --teal:#2dd4bf; --cyan:#06b6d4; --sky:#38bdf8; --ink:#eef4f8; --muted:#93a7ba; --faint:#5d7388; }
+html,body { height:100%; }
+body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+  background:#060d18; color:var(--ink); overflow-x:hidden; }
+.wrap { display:flex; height:100vh; flex-shrink:0; position:relative; z-index:2; }
+/* ===== 左侧视觉 55% ===== */
+.visual { position:relative; flex:0 0 55%; overflow:hidden; }
+.visual img { position:absolute; inset:0; width:100%;height:100%; object-fit:cover; opacity:.68;
+  filter:saturate(1.08) brightness(.85); }
+.visual::after { content:''; position:absolute; inset:0; z-index:1;
+  background:
+    radial-gradient(600px 320px at 30% 20%, rgba(6,182,212,.10), transparent 60%),
+    linear-gradient(90deg, rgba(6,13,24,.55) 0%, rgba(6,13,24,.06) 55%, rgba(6,13,24,.72) 100%),
+    linear-gradient(180deg, rgba(6,13,24,.5), transparent 30%, rgba(6,13,24,.72)); }
+.v-content { position:absolute; inset:0; z-index:2; display:flex; flex-direction:column;
+  justify-content:space-between; padding:46px 48px; }
+.v-brand { display:flex; align-items:center; gap:12px; }
+.v-brand .m { width:40px;height:40px;border-radius:11px;
+  background:linear-gradient(135deg,#0d9488,#0891b2); display:grid;place-items:center;
+  font-weight:800; font-size:18px; box-shadow:0 0 24px rgba(13,148,136,.5); }
+.v-brand b { font-size:15px; letter-spacing:1px; }
+.v-brand span { display:block; font-size:9.5px; color:var(--muted); letter-spacing:2px; margin-top:2px; font-family:Consolas,monospace;}
+.v-bottom .tag { font-family:Consolas,monospace; font-size:10.5px; letter-spacing:3px; color:#5eead4;
+  display:flex; align-items:center; gap:10px; margin-bottom:18px; }
+.v-bottom .tag::before { content:''; width:30px;height:1px;background:#2dd4bf; }
+.v-bottom h2 { font-size:40px; line-height:1.25; font-weight:800; letter-spacing:.5px; }
+.v-bottom h2 .grad { background:linear-gradient(100deg,#a7f3d0,#5eead4 50%,#7dd3fc);
+  -webkit-background-clip:text; background-clip:text; color:transparent; }
+.v-bottom > p { margin-top:16px; font-size:13.5px; line-height:2; color:var(--muted); max-width:430px; }
+.v-stats { display:flex; gap:38px; margin-top:30px; }
+.v-stats .s b { font-size:27px; font-weight:800; display:block;
+  background:linear-gradient(180deg,#f0fdfa,#5eead4); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.v-stats .s span { font-size:10.5px; color:var(--faint); letter-spacing:1px; }
+/* ===== 右侧入口 45% ===== */
+.entry { flex:1; display:flex; flex-direction:column; justify-content:center; padding:0 7% 0; position:relative;
+  background: radial-gradient(600px 360px at 80% 12%, rgba(6,182,212,.09), transparent 65%),
+              linear-gradient(180deg,#08101d,#060d18); }
+.entry::before { content:''; position:absolute; left:0; top:12%; bottom:12%; width:1px;
+  background:linear-gradient(180deg,transparent,rgba(45,212,191,.4),transparent); }
+.e-kicker { font-family:Consolas,monospace; font-size:11px; letter-spacing:4px; color:#5eead4; margin-bottom:20px; }
+.entry h1 { font-size:38px; font-weight:800; line-height:1.25; }
+.entry h1 small { display:block; font-size:17px; font-weight:400; color:var(--muted); margin-top:14px; line-height:1.9; }
+.e-list { list-style:none; margin:32px 0 8px; display:flex; flex-direction:column; gap:15px; }
+.e-list li { display:flex; gap:13px; align-items:flex-start; font-size:13px; color:#c3d2e0; }
+.e-list .n { flex-shrink:0; width:23px;height:23px;border-radius:7px; font-family:Consolas,monospace; font-size:10.5px;
+  display:grid;place-items:center; color:#5eead4; background:rgba(45,212,191,.1);
+  border:1px solid rgba(45,212,191,.3); margin-top:1px; }
+.e-list p { line-height:1.6; }
+.e-list p span { display:block; color:var(--faint); font-size:11px; margin-top:2px; }
+.btn-primary { margin-top:34px; border:none; cursor:pointer; align-self:flex-start;
+  font-size:14.5px; font-weight:700; letter-spacing:3px; color:#04201d;
+  padding:16px 52px; border-radius:999px;
+  background:linear-gradient(100deg,#2dd4bf,#22d3ee,#38bdf8);
+  box-shadow:0 12px 34px rgba(34,211,238,.32); transition:transform .25s, box-shadow .25s; }
+.btn-primary:hover { transform:translateY(-2px); box-shadow:0 18px 46px rgba(34,211,238,.48); }
+.e-foot { position:absolute; bottom:26px; left:7%; right:7%;
+  font-size:10.5px; color:var(--faint); display:flex; justify-content:space-between; font-family:Consolas,monospace; }
+/* ===== 登录弹窗 ===== */
+.mask { position:fixed; inset:0; z-index:20; background:rgba(3,7,15,.66);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  display:none; align-items:center; justify-content:center; opacity:0; transition:opacity .3s; }
+.mask.show { display:flex; opacity:1; }
+.modal { width:400px; background:linear-gradient(165deg,rgba(16,30,52,.94),rgba(8,16,32,.96));
+  border:1px solid rgba(45,212,191,.3); border-radius:20px; padding:38px 36px 32px;
+  box-shadow:0 30px 90px rgba(0,0,0,.6),0 0 50px rgba(45,212,191,.12); position:relative;
+  transform:translateY(18px) scale(.97); transition:transform .35s cubic-bezier(.22,.61,.36,1); }
+.mask.show .modal { transform:none; }
+.modal .corner{position:absolute;width:16px;height:16px;border:2px solid var(--teal);}
+.modal .c-tl{top:8px;left:8px;border-width:2px 0 0 2px;border-top-left-radius:8px;}
+.modal .c-br{bottom:8px;right:8px;border-width:0 2px 2px 0;border-bottom-right-radius:8px;}
+.modal h2{font-size:21px;text-align:center;letter-spacing:2px;}
+.modal .mt{text-align:center;font-size:11px;color:var(--faint);margin:8px 0 28px;letter-spacing:2px;font-family:Consolas,monospace;}
+.field{margin-bottom:16px;}
+.field input{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(148,163,184,.22);
+  border-radius:11px;padding:13px 15px;color:#f1f5f9;font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s;}
+.field input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(45,212,191,.13);}
+.field input::placeholder{color:#475569;}
+.mrow{display:flex;justify-content:space-between;font-size:11px;color:var(--faint);margin:4px 0 22px;}
+.modal .login{width:100%;border:none;cursor:pointer;padding:14px;border-radius:11px;
+  font-size:14px;font-weight:700;letter-spacing:3px;color:#04201d;
+  background:linear-gradient(100deg,#2dd4bf,#22d3ee,#38bdf8);box-shadow:0 8px 26px rgba(34,211,238,.3);}
+.modal .login:hover{filter:brightness(1.08);}
+.modal .close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--faint);font-size:18px;cursor:pointer;}
+.modal .close:hover{color:#e2e8f0;}
+.err{color:#f87171;font-size:11px;text-align:center;margin-top:12px;min-height:16px;}
+.loading-dots{display:none;gap:5px;justify-content:center;margin-top:14px;}
+.loading-dots i{width:7px;height:7px;border-radius:50%;background:var(--teal);animation:ld 1s infinite;}
+.loading-dots i:nth-child(2){animation-delay:.18s}.loading-dots i:nth-child(3){animation-delay:.36s}
+@keyframes ld{0%,100%{opacity:.25;transform:translateY(0)}50%{opacity:1;transform:translateY(-5px)}}
+@media (max-width:900px){ .visual{display:none} .entry{flex:1} }
+
+/* ===== 页下：真实医学影像展示区（首屏登录区不受影响，向下滚动可见） ===== */
+.showcase { position:relative; z-index:2;
+  background:linear-gradient(180deg,#060d18 0%,#081222 45%,#070f1c 100%);
+  padding:88px 6% 0; }
+.sc-inner { max-width:1180px; margin:0 auto; }
+.sc-kicker { font-family:Consolas,monospace; font-size:11px; letter-spacing:4px; color:#5eead4;
+  display:flex; align-items:center; gap:12px; }
+.sc-kicker::before { content:''; width:34px; height:1px; background:#2dd4bf; }
+.sc-head h2 { font-size:32px; font-weight:800; margin:16px 0 12px; letter-spacing:.5px; }
+.sc-head p { color:var(--muted); font-size:14px; line-height:1.9; max-width:700px; }
+.sc-bento { margin-top:42px; }
+.sc-stat { display:flex; flex-direction:column; justify-content:center; gap:8px;
+  background:linear-gradient(150deg,rgba(13,148,136,.20),rgba(8,145,178,.10)) !important; }
+.sc-stat .big { font-size:34px; font-weight:800; letter-spacing:.5px;
+  background:linear-gradient(180deg,#f0fdfa,#5eead4); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.sc-stat .lab { font-size:12.5px; color:#cbd5e1; font-weight:600; }
+.sc-stat .sub { font-size:10.5px; color:var(--faint); line-height:1.7; }
+.sc-metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:14px; }
+.sc-metric { border:1px solid rgba(45,212,191,.16); border-radius:14px;
+  background:linear-gradient(160deg,rgba(15,30,55,.72),rgba(10,20,40,.62));
+  box-shadow:0 6px 24px rgba(0,0,0,.28); padding:22px 20px; }
+.sc-metric b { display:block; font-size:25px; font-weight:800;
+  background:linear-gradient(180deg,#f0fdfa,#5eead4); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.sc-metric span { display:block; font-size:11.5px; color:var(--faint); margin-top:6px; letter-spacing:1px; }
+.sc-cta { text-align:center; padding:70px 0 26px; }
+.sc-cta p { font-size:13px; color:var(--muted); margin-bottom:22px; letter-spacing:1px; }
+.sc-cta .btn-primary { padding:15px 64px; font-size:15px; margin-top:0; }
+.sc-foot { border-top:1px solid rgba(255,255,255,.06); padding:24px 0 30px;
+  text-align:center; font-size:11px; color:var(--faint); letter-spacing:1px; }
+.sc-foot span { color:#5eead4; }
+@media (max-width:1100px){ .sc-bento .rb-s4 { grid-column:span 12; } }
+@media (max-width:900px){
+  .showcase { padding:64px 5% 0; }
+  .sc-head h2 { font-size:25px; }
+  .sc-metrics { grid-template-columns:repeat(2,1fr); }
+}
+</style>
 </head>
 <body>
-  <header class="hero">
-    <nav class="nav wrap" aria-label="主导航">
-      <a class="brand" href="#top" aria-label="Patho-COT 首页">
-        <span class="brand-mark">Ψ</span>
-        <span>Patho-COT</span>
-      </a>
-      <div class="nav-links">
-        <a href="#pipeline">诊断流程</a>
-        <a href="#preview">界面预览</a>
-        <a href="#run">本地运行</a>
-        <a class="nav-button" href="https://github.com/fanlin455/patho-cot">查看源码</a>
+<div class="wrap">
+  <div class="visual">
+    <img src="/patho-cot/static/medical/D-01.jpg?v=real1" alt="DNA 双螺旋">
+    <div class="v-content">
+      <div class="v-brand">
+        <div class="m">P</div>
+        <div><b>Patho-COT</b><span>多模态智能诊断平台</span></div>
       </div>
-    </nav>
-
-    <div class="hero-content wrap" id="top">
-      <div class="hero-copy">
-        <p class="eyebrow">PATHOLOGY × COMPUTER VISION × LLM</p>
-        <h1>让病理分析过程<br><span>更清晰、更可解释</span></h1>
-        <p class="lead">Patho-COT 将图像质控、器官识别、细胞检测、病变判定、亚型分类与中文报告生成组织成一套六步引导式流程。</p>
-        <div class="hero-actions">
-          <a class="button primary" href="#preview">查看系统界面</a>
-          <a class="button secondary" href="https://github.com/fanlin455/patho-cot#本地运行">本地部署说明</a>
+      <div class="v-bottom">
+        <div class="tag">CHAIN-OF-THOUGHT PATHOLOGY</div>
+        <h2>从微观细胞<br>到<span class="grad">可解释的诊断结论</span></h2>
+        <p>让深度模型的每一步推理都像病理医生的思维过程——观察、鉴别、求证、定论，全程可见。</p>
+        <div class="v-stats">
+          <div class="s"><b>6 级</b><span>诊断流水线</span></div>
+          <div class="s"><b>7 个</b><span>协同模型</span></div>
+          <div class="s"><b>19 类</b><span>器官覆盖</span></div>
+          <div class="s"><b>96.8%</b><span>集成准确率</span></div>
         </div>
-        <div class="notice" role="note">
-          <strong>展示站说明</strong>
-          <span>本页是 GitHub Pages 静态展示，不执行医疗图像推理，不可用于临床诊断。</span>
-        </div>
-      </div>
-      <div class="hero-visual">
-        <div class="orb orb-a"></div>
-        <div class="orb orb-b"></div>
-        <div class="scope-card">
-          <div class="scope-top"><span></span><span></span><span></span></div>
-          <img src="./assets/home.png" alt="Patho-COT 系统首页预览">
-        </div>
-        <div class="metric metric-a"><b>6</b><span>步可解释流程</span></div>
-        <div class="metric metric-b"><b>AI</b><span>结构化中文报告</span></div>
       </div>
     </div>
-  </header>
+  </div>
 
-  <main>
-    <section class="section wrap" id="pipeline">
-      <div class="section-heading">
-        <p class="eyebrow">从输入到报告</p>
-        <h2>六步引导式病理分析</h2>
-        <p>每一步展示独立结果和关键指标，便于回看、演示与研究验证。</p>
-      </div>
-      <div class="steps">
-        <article><span>01</span><h3>质量检测</h3><p>对焦、染色、组织占比与可用性评分。</p></article>
-        <article><span>02</span><h3>器官分类</h3><p>识别组织来源，呈现 Top-5 概率分布。</p></article>
-        <article><span>03</span><h3>细胞检测</h3><p>定位病变与非病变细胞，输出标注图。</p></article>
-        <article><span>04</span><h3>病变性质</h3><p>给出正常/异常概率与实验性热力图。</p></article>
-        <article><span>05</span><h3>组织亚型</h3><p>分类组织亚型，展示置信度与概率。</p></article>
-        <article><span>06</span><h3>AI 报告</h3><p>本地模型组织结构化中文研究报告。</p></article>
-      </div>
-    </section>
+  <div class="entry">
+    <div class="e-kicker">WELCOME BACK</div>
+    <h1>智析病理工作台<small>面向医院病理科的 AI 辅助诊断系统，<br>请登录后开始今日诊断工作。</small></h1>
+    <ul class="e-list">
+      <li><span class="n">01</span><p>六步 Chain-of-Thought 诊断<span>质控 · 器官 · 细胞 · 性质 · 亚型 · 报告</span></p></li>
+      <li><span class="n">02</span><p>单图 / 多图批量分析<span>支持多 Patch 并行推理与跨切片一致性汇总</span></p></li>
+      <li><span class="n">03</span><p>证据链全程留痕<span>细胞框选、异常热力、模型贡献度均可回溯复核</span></p></li>
+    </ul>
+    <button class="btn-primary" onclick="openLogin()">登 录 系 统</button>
+    <div class="e-foot"><span>演示账号 doctor · 密码 patho2026</span><span>v2.0 · 2026</span></div>
+  </div>
+</div>
 
-    <section class="section gallery-section" id="preview">
-      <div class="wrap">
-        <div class="section-heading light">
-          <p class="eyebrow">系统预览</p>
-          <h2>一个界面，承载完整研究链路</h2>
-          <p>支持单图引导、多图批量分析、历史回看和报告整理。</p>
-        </div>
-        <div class="gallery">
-          <figure class="wide"><img src="./assets/detail.png" alt="分步诊断详情界面" loading="lazy"><figcaption>分步诊断与结果回看</figcaption></figure>
-          <figure><img src="./assets/multi.png" alt="多图批量分析界面" loading="lazy"><figcaption>多图批量分析</figcaption></figure>
-          <figure><img src="./assets/report.png" alt="AI 报告界面" loading="lazy"><figcaption>结构化 AI 报告</figcaption></figure>
-        </div>
-      </div>
-    </section>
-
-    <section class="section wrap" id="run">
-      <div class="run-grid">
-        <div>
-          <p class="eyebrow">本地完整版</p>
-          <h2>使用 GPU 运行真实推理</h2>
-          <p>完整系统由 FastAPI、PyTorch 和多个视觉/语言模型构成。仓库不收录大体积权重、历史数据库和用户上传内容。</p>
-          <ul class="requirements">
-            <li><b>GPU</b><span>NVIDIA，建议 ≥ 8GB 显存</span></li>
-            <li><b>Python</b><span>3.10–3.12（64 位）</span></li>
-            <li><b>存储</b><span>完整安装约 12GB</span></li>
-          </ul>
-        </div>
-        <div class="terminal" aria-label="启动命令示例">
-          <div class="terminal-top"><span></span><span></span><span></span><em>PowerShell</em></div>
-          <pre><code><i># 配置模型根目录</i>
-$env:PATHO_COT_MODEL_ROOT = (Get-Location).Path
-
-<i># 启动 FastAPI 服务</i>
-Set-Location patho_cot_web
-python -m uvicorn app:app `
-  --host 0.0.0.0 --port 8001</code></pre>
-          <a href="https://github.com/fanlin455/patho-cot#本地运行">阅读完整部署说明 →</a>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <footer>
-    <div class="wrap footer-inner">
-      <div><b>Patho-COT · 智析病理</b><p>科研与教学演示项目</p></div>
-      <p>仅供科研和教学参考，不可作为临床诊断依据。</p>
+<!-- ===== 真实医学影像展示区（向下滚动） ===== -->
+<section class="showcase">
+  <div class="sc-inner">
+    <div class="sc-head">
+      <div class="sc-kicker">REAL EVIDENCE GALLERY</div>
+      <h2>真实医学影像 · 覆盖诊断全链路</h2>
+      <p>从分子影像、临床多模态数据到组织与细胞判读，9 张真实影像对应六级 Chain-of-Thought 流水线的每一级证据——质控、器官、细胞、性质、亚型、报告，全程可回溯。</p>
     </div>
+
+    <div class="real-bento sc-bento">
+      <!-- DNA 双螺旋：分子级证据（大卡） -->
+      <div class="rb-card rb-photo rb-s5 rb-r2">
+        <img src="/patho-cot/static/medical/D-01.jpg?v=real1" alt="DNA 双螺旋" loading="lazy">
+        <span class="rb-corner tl"></span><span class="rb-corner bl"></span>
+        <span class="rb-code">REAL · DNA MOLECULE / D-01</span>
+        <div class="rb-cap"><b>DNA 双螺旋</b><span>分子层面的疾病机制证据 · 诊断推理起点</span></div>
+      </div>
+      <!-- H&E 腺管样结构（大卡） -->
+      <div class="rb-card rb-photo rb-s7 rb-r2">
+        <img src="/patho-cot/static/medical/B-01.jpg?v=real1" alt="H&E 染色腺管样结构" loading="lazy">
+        <span class="rb-corner tr"></span><span class="rb-corner br"></span>
+        <span class="rb-code">REAL · H&amp;E GLAND / B-01</span>
+        <div class="rb-cap"><b>H&amp;E 染色腺管样结构</b><span>组织病理切片判读 · 腺体结构与核异型性分析</span></div>
+      </div>
+      <!-- CT 灯箱 -->
+      <div class="rb-card rb-photo rb-s4">
+        <img src="/patho-cot/static/medical/A-04.jpg?v=real1" alt="CT 灯箱阅片" loading="lazy">
+        <span class="rb-corner tl"></span><span class="rb-corner tr"></span>
+        <span class="rb-code">REAL · CT / A-04</span>
+        <div class="rb-cap"><b>CT 灯箱阅片</b><span>多切片并排复核 · AI 预标注高亮</span></div>
+      </div>
+      <!-- MR 磁共振 -->
+      <div class="rb-card rb-photo rb-s4">
+        <img src="/patho-cot/static/medical/A-05.jpg?v=real1" alt="MR 磁共振扫描" loading="lazy">
+        <span class="rb-corner tl"></span><span class="rb-corner tr"></span>
+        <span class="rb-code">REAL · MRI / A-05</span>
+        <div class="rb-cap"><b>MR 磁共振扫描</b><span>多模态影像进入统一排队推理队列</span></div>
+      </div>
+      <!-- CT 三维重建 -->
+      <div class="rb-card rb-photo rb-s4">
+        <img src="/patho-cot/static/medical/C-02.jpg?v=real1" alt="CT 三维影像重建" loading="lazy">
+        <span class="rb-corner tl"></span><span class="rb-corner tr"></span>
+        <span class="rb-code">REAL · CT 3D / C-02</span>
+        <div class="rb-cap"><b>CT 三维影像重建</b><span>病灶空间定位 · 器官来源辅助确认</span></div>
+      </div>
+      <!-- 肿瘤细胞电镜 -->
+      <div class="rb-card rb-photo rb-s6">
+        <img src="/patho-cot/static/medical/B-02.jpg?v=real1" alt="肿瘤细胞电镜" loading="lazy">
+        <span class="rb-corner bl"></span><span class="rb-corner br"></span>
+        <span class="rb-code">REAL · CELL EM / B-02</span>
+        <div class="rb-cap"><b>肿瘤细胞电镜</b><span>细胞级异常证据 · YOLO + SAM 框选分割</span></div>
+      </div>
+      <!-- 玻璃病理切片排架 -->
+      <div class="rb-card rb-photo rb-s6">
+        <img src="/patho-cot/static/medical/B-05.jpg?v=real1" alt="玻璃病理切片排架" loading="lazy">
+        <span class="rb-corner bl"></span><span class="rb-corner br"></span>
+        <span class="rb-code">REAL · SLIDES / B-05</span>
+        <div class="rb-cap"><b>玻璃病理切片排架</b><span>对接真实病理科工作流 · 批量 patch 来源</span></div>
+      </div>
+      <!-- ICU 心电监护 -->
+      <div class="rb-card rb-photo rb-s4">
+        <img src="/patho-cot/static/medical/A-01.jpg?v=real1" alt="ICU 心电监护仪" loading="lazy">
+        <span class="rb-corner tl"></span><span class="rb-corner tr"></span>
+        <span class="rb-code">REAL · CLINICAL / A-01</span>
+        <div class="rb-cap"><b>ICU 心电监护仪</b><span>临床多模态数据 · 病情描述交叉验证</span></div>
+      </div>
+      <!-- 多切片对比阅片台 -->
+      <div class="rb-card rb-photo rb-s4">
+        <img src="/patho-cot/static/medical/B-06.jpg?v=real1" alt="多切片对比阅片台" loading="lazy">
+        <span class="rb-corner tl"></span><span class="rb-corner tr"></span>
+        <span class="rb-code">REAL · LIGHTBOX / B-06</span>
+        <div class="rb-cap"><b>多切片对比阅片台</b><span>跨切片一致性核验 · 多数表决汇总</span></div>
+      </div>
+      <!-- 数据收尾卡 -->
+      <div class="rb-card rb-s4 sc-stat">
+        <span class="rb-corner bl"></span><span class="rb-corner br"></span>
+        <div class="big">96.8%</div>
+        <div class="lab">六模型集成诊断准确率</div>
+        <div class="sub">质控 → 器官 → 检测 → 性质 → 亚型 → 报告<br>Chain-of-Thought 证据链全程留痕</div>
+      </div>
+    </div>
+
+    <div class="sc-metrics">
+      <div class="sc-metric"><b>6 级</b><span>CHAIN-OF-THOUGHT 流水线</span></div>
+      <div class="sc-metric"><b>7 个</b><span>协同模型 · ViT / YOLO / SAM / GCN</span></div>
+      <div class="sc-metric"><b>19 类</b><span>器官组织来源覆盖</span></div>
+      <div class="sc-metric"><b>多 Patch</b><span>并行推理 · 跨切片综合报告</span></div>
+    </div>
+
+    <div class="sc-cta">
+      <p>证据已经就绪，登录后即可开始今日诊断工作</p>
+      <button class="btn-primary" onclick="openLogin()">登 录 系 统</button>
+    </div>
+  </div>
+  <footer class="sc-foot">
+    Patho-COT · 智析病理多模态智能诊断平台 &nbsp;|&nbsp; 演示账号 <span>doctor</span> · 密码 <span>patho2026</span> &nbsp;|&nbsp; v2.0 · 2026
   </footer>
+</section>
+
+<div class="mask" id="mask">
+  <div class="modal">
+    <span class="corner c-tl"></span><span class="corner c-br"></span>
+    <button class="close" onclick="closeLogin()">✕</button>
+    <h2>系统登录</h2>
+    <div class="mt">PATHO-COT SECURE ACCESS</div>
+    <form onsubmit="return doLogin(event)">
+      <div class="field"><input id="user" type="text" placeholder="账号 / 工号" autocomplete="username"></div>
+      <div class="field"><input id="pass" type="password" placeholder="密码" autocomplete="current-password"></div>
+      <div class="mrow"><label><input type="checkbox" checked> 记住账号</label><span>忘记密码？</span></div>
+      <button class="login" type="submit" id="loginBtn">登 录</button>
+      <div class="err" id="err"></div>
+      <div class="loading-dots" id="dots"><i></i><i></i><i></i></div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openLogin(){ document.getElementById('mask').classList.add('show'); setTimeout(function(){document.getElementById('user').focus();},250); }
+function closeLogin(){ document.getElementById('mask').classList.remove('show'); }
+document.getElementById('mask').addEventListener('click', function(e){ if(e.target.id==='mask') closeLogin(); });
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeLogin(); });
+
+/* ===== 固定账号密码（纯前端静态校验，演示用） ===== */
+var AUTH_ACCOUNT = 'doctor';
+var AUTH_PASSWORD = 'patho2026';
+var SESSION_MS  = 7 * 24 * 60 * 60 * 1000; // 登录态保留 7 天
+var failCount = 0;
+
+function clearAuth(){
+  try {
+    localStorage.removeItem('patho_auth'); localStorage.removeItem('patho_auth_ts');
+    localStorage.removeItem('patho_user'); localStorage.removeItem('patho_boot_id');
+  } catch(e) {}
+}
+function isAuthed(){
+  try {
+    var raw = localStorage.getItem('patho_auth');
+    if (raw !== '1') return false;
+    var ts = parseInt(localStorage.getItem('patho_auth_ts') || '0', 10);
+    if (!ts || Date.now() - ts > SESSION_MS) {   // 过期自动登出
+      clearAuth();
+      return false;
+    }
+    return true;
+  } catch(e) { return false; }
+}
+/* 启动标识检查：服务每次重启 bootId 都会变；标识不匹配则清除登录态、留在封面。
+   封面页同步等校验完成再决定是否跳工作台。 */
+var bootCheckReady = false;
+(function verifyBoot(){
+  fetch('/patho-cot/api/boot-id', {cache:'no-store'})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      var saved = null;
+      try { saved = localStorage.getItem('patho_boot_id'); } catch(e) {}
+      if (d && saved && d.bootId !== saved) clearAuth();   // 服务已重启 → 强制重登
+      bootCheckReady = true;
+      if (isAuthed()) location.replace('/patho-cot/dashboard');
+    })
+    .catch(function(){
+      // 接口不可用时不影响正常打开封面，避免误伤
+      bootCheckReady = true;
+      if (isAuthed()) location.replace('/patho-cot/dashboard');
+    });
+})();
+
+function doLogin(e){
+  e.preventDefault();
+  var u=document.getElementById('user').value.trim(), p=document.getElementById('pass').value;
+  var err=document.getElementById('err');
+  if(!u||!p){ err.textContent='请输入账号和密码'; return false; }
+  err.textContent='';
+  var btn=document.getElementById('loginBtn'); btn.disabled=true; btn.textContent='身份验证中';
+  document.getElementById('dots').style.display='flex';
+  setTimeout(function(){
+    if (u !== AUTH_ACCOUNT || p !== AUTH_PASSWORD) {
+      failCount++;
+      btn.disabled=false; btn.textContent='登 录';
+      document.getElementById('dots').style.display='none';
+      document.getElementById('pass').select();
+      err.textContent = (u !== AUTH_ACCOUNT ? '账号不存在' : '密码错误')
+        + '（已失败 ' + failCount + ' 次，请核对演示账号 doctor / patho2026）';
+      return;
+    }
+    failCount = 0;
+    btn.textContent='登录成功，正在进入…';
+    // 记录当前服务启动标识后再进入；之后服务重启该标识变化，将被强制重登
+    fetch('/patho-cot/api/boot-id', {cache:'no-store'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .catch(function(){ return null; })
+      .then(function(d){
+        try {
+          localStorage.setItem('patho_auth','1');
+          localStorage.setItem('patho_auth_ts', String(Date.now()));
+          localStorage.setItem('patho_user', u);
+          if (d && d.bootId) localStorage.setItem('patho_boot_id', d.bootId);
+        } catch(ex) {}
+        setTimeout(function(){ location.replace('/patho-cot/dashboard'); }, 500);
+      });
+  }, 700);
+  return false;
+}
+</script>
 </body>
 </html>
-

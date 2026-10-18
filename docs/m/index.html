@@ -1,0 +1,194 @@
+﻿﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>手机上传 · Patho-COT</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(160deg, #0a1422 0%, #070d18 55%, #0b2230 100%);
+    min-height: 100vh;
+    color: #1e293b;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 24px 16px 40px;
+}
+.card {
+    width: 100%; max-width: 420px;
+    background: #fff;
+    border-radius: 20px;
+    padding: 24px 20px 28px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+}
+.logo {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 6px;
+}
+.logo-icon {
+    width: 38px; height: 38px; border-radius: 11px;
+    background: linear-gradient(135deg, #0d9488, #0891b2);
+    color: #fff; font-weight: 800; font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+}
+.logo h1 { font-size: 17px; color: #0f172a; }
+.logo p { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+.session-tag {
+    font-size: 11px; color: #0d9488;
+    background: #ccfbf1; border-radius: 100px;
+    display: inline-block; padding: 3px 10px; margin: 8px 0 16px;
+    word-break: break-all;
+}
+.pick-area {
+    border: 2px dashed #5eead4;
+    border-radius: 14px;
+    padding: 30px 16px;
+    text-align: center;
+    background: #f0fdfa;
+    margin-bottom: 14px;
+}
+.pick-area .big { font-size: 34px; margin-bottom: 8px; }
+.pick-area .t1 { font-size: 14px; font-weight: 600; color: #334155; }
+.pick-area .t2 { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+.btn-row { display: flex; gap: 10px; margin-bottom: 14px; }
+.mbtn {
+    flex: 1; padding: 13px 0;
+    border-radius: 12px; border: none;
+    font-size: 14px; font-weight: 600;
+    cursor: pointer;
+}
+.mbtn-album { background: #ccfbf1; color: #0f766e; }
+.mbtn-camera { background: #cffafe; color: #0e7490; }
+#previewWrap { display: none; margin-bottom: 14px; }
+#previewWrap img {
+    width: 100%; border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    max-height: 300px; object-fit: contain;
+    background: #f8fafc;
+}
+#previewName { font-size: 11px; color: #64748b; margin-top: 6px; word-break: break-all; }
+#uploadBtn {
+    width: 100%; padding: 15px 0;
+    border-radius: 13px; border: none;
+    background: linear-gradient(135deg, #0d9488, #0891b2);
+    color: #fff; font-size: 15px; font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(13,148,136,0.4);
+}
+#uploadBtn:disabled { opacity: 0.45; box-shadow: none; }
+#status {
+    margin-top: 14px; font-size: 13px; text-align: center;
+    min-height: 20px; color: #64748b;
+}
+#status.ok { color: #059669; font-weight: 600; }
+#status.err { color: #dc2626; font-weight: 600; }
+.tip { margin-top: 18px; font-size: 11px; color: rgba(255,255,255,0.75); text-align: center; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="card">
+    <div class="logo">
+        <div class="logo-icon">P</div>
+        <div>
+            <h1>Patho-COT 手机上传</h1>
+            <p>多模态智能诊断平台 · 移动配对端</p>
+        </div>
+    </div>
+    <div class="session-tag" id="sessionTag">配对会话：—</div>
+
+    <div class="pick-area" id="pickArea">
+        <div class="big">🔬</div>
+        <div class="t1">选择病理切片图像</div>
+        <div class="t2">支持相册选择或现场拍照，上传后将自动出现在电脑端</div>
+    </div>
+
+    <div class="btn-row">
+        <button class="mbtn mbtn-album" id="albumBtn">🖼 相册选择</button>
+        <button class="mbtn mbtn-camera" id="cameraBtn">📷 拍照上传</button>
+    </div>
+
+    <div id="previewWrap">
+        <img id="previewImg" alt="预览">
+        <div id="previewName"></div>
+    </div>
+
+    <button id="uploadBtn" disabled>上传到电脑</button>
+    <div id="status"></div>
+</div>
+<div class="tip">上传成功后可直接回到电脑端继续操作<br>本页面仅通过局域网传输，图像不会上传到互联网</div>
+
+<input type="file" id="fileAlbum" accept="image/*" style="display:none">
+<input type="file" id="fileCamera" accept="image/*" capture="environment" style="display:none">
+
+<script>
+var session = new URLSearchParams(location.search).get('session') || '';
+document.getElementById('sessionTag').textContent = '配对会话：' + (session || '（缺少 session 参数，请从电脑端扫码进入）');
+
+var pickedFile = null;
+var uploadBtn = document.getElementById('uploadBtn');
+var statusEl = document.getElementById('status');
+var previewWrap = document.getElementById('previewWrap');
+var previewImg = document.getElementById('previewImg');
+var previewName = document.getElementById('previewName');
+
+document.getElementById('albumBtn').onclick = function() { document.getElementById('fileAlbum').click(); };
+document.getElementById('cameraBtn').onclick = function() { document.getElementById('fileCamera').click(); };
+
+function onPick(input) {
+    var f = input.files && input.files[0];
+    if (!f) return;
+    pickedFile = f;
+    var r = new FileReader();
+    r.onload = function(e) {
+        previewImg.src = e.target.result;
+        previewWrap.style.display = 'block';
+        previewName.textContent = f.name + ' · ' + (f.size / 1024).toFixed(0) + ' KB';
+        uploadBtn.disabled = false;
+        statusEl.textContent = '';
+        statusEl.className = '';
+    };
+    r.readAsDataURL(f);
+}
+document.getElementById('fileAlbum').onchange = function() { onPick(this); };
+document.getElementById('fileCamera').onchange = function() { onPick(this); };
+
+uploadBtn.onclick = function() {
+    if (!pickedFile || !session) {
+        statusEl.textContent = !session ? '缺少配对会话，请重新扫码进入' : '请先选择图像';
+        statusEl.className = 'err';
+        return;
+    }
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = '上传中…';
+    statusEl.textContent = '正在通过局域网传输…';
+    statusEl.className = '';
+
+    fetch('/patho-cot/api/mobile-upload?session=' + encodeURIComponent(session), {
+        method: 'POST',
+        headers: {
+            'Content-Type': pickedFile.type || 'image/png',
+            'X-File-Name': encodeURIComponent(pickedFile.name || '手机图像')
+        },
+        body: pickedFile
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.ok) {
+            var total = d.total ? '（本会话已传 ' + d.total + ' 张）' : '';
+            statusEl.textContent = '✓ 上传成功！电脑端已接收' + total + '，可继续上传下一张';
+            statusEl.className = 'ok';
+            uploadBtn.textContent = '继续上传下一张';
+            uploadBtn.disabled = false;
+            pickedFile = null;
+            previewWrap.style.display = 'none';
+        } else {
+            throw new Error(d.error || '上传失败');
+        }
+    }).catch(function(e) {
+        statusEl.textContent = '上传失败：' + e.message + '，请确认与电脑在同一 Wi-Fi 后重试';
+        statusEl.className = 'err';
+        uploadBtn.textContent = '重试上传';
+        uploadBtn.disabled = false;
+    });
+};
+</script>
+</body>
+</html>

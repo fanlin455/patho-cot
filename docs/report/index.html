@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 诊断报告 | Patho-COT · BC融合方案</title>
+<script src="/patho-cot/static/assets/vendor/chart.umd.min.js"></script>
+<script src="/patho-cot/static/js/marked.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow-x: hidden; }
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #070d18;
+    color: #e2e8f0;
+    position: relative;
+    min-height: 100vh;
+}
+
+/* ========== 背景层 ========== */
+.bg-container { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
+.bg-base {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, #070d18 0%, #0a1422 55%, #0b1a28 100%);
+}
+#cell-fluid-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.bg-noise {
+    position: absolute; inset: 0;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/patho-cot/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/patho-cot/%3E%3C/svg%3E");
+    pointer-events: none;
+}
+
+/* ========== 侧边栏 ========== */
+.sidebar {
+    position: fixed; top: 0; left: 0;
+    width: 240px; height: 100vh;
+    background: rgba(8,16,30,0.60);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border-right: 1px solid rgba(45,212,191,0.10);
+    z-index: 100;
+    display: flex; flex-direction: column;
+}
+.sidebar-logo {
+    padding: 20px 20px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center; gap: 12px;
+}
+.sidebar-logo-icon {
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, #0d9488, #0891b2);
+    border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-weight: 800; font-size: 16px;
+    box-shadow: 0 0 24px rgba(13,148,136,0.5);
+    position: relative; overflow: hidden;
+}
+.sidebar-logo-icon::after {
+    content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+    background: linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.3) 50%, transparent 60%);
+    animation: logoShine 3s ease-in-out infinite;
+}
+@keyframes logoShine {
+    0%, 100% { transform: translateX(-100%) rotate(45deg); }
+    50% { transform: translateX(100%) rotate(45deg); }
+}
+.sidebar-logo-text h1 { font-size: 16px; font-weight: 700; color: #f1f5f9; }
+.sidebar-logo-text p { font-size: 10px; color: #64748b; margin-top: 2px; }
+
+.sidebar-nav { flex: 1; padding: 16px 12px; overflow-y: auto; }
+.nav-section-label {
+    font-size: 10px; font-weight: 700; color: #64748b;
+    padding: 10px 12px 8px; text-transform: uppercase; letter-spacing: 1px;
+}
+.gooey-nav { position: relative; }
+.nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 14px; margin: 2px 0;
+    border-radius: 10px; cursor: pointer;
+    font-size: 13px; color: #94a3b8;
+    position: relative; z-index: 3;
+    transition: color .25s ease;
+    font-weight: 500; text-decoration: none;
+}
+.nav-item svg { width: 18px; height: 18px; }
+.nav-item:hover { color: #e2e8f0; }
+.nav-item.active { color: #67e8f9; font-weight: 700; }
+.nav-indicator {
+    position: absolute; left: 0; right: 0; height: 42px;
+    background: #10333d;
+    border-radius: 10px; z-index: 1;
+    transition: top .45s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.nav-badge {
+    margin-left: auto; font-size: 10px;
+    padding: 2px 8px; border-radius: 100px;
+    background: rgba(45,212,191,0.22); color: #5eead4; font-weight: 600;
+}
+.nav-item:not(.active) .nav-badge { background: rgba(6,182,212,0.18); color: #7dd3f7; }
+
+/* ========== 主内容区 ========== */
+.main-content {
+    margin-left: 240px;
+    margin-right: 0;
+    width: calc(100% - 240px);
+    padding: 64px 40px 60px;
+    position: relative;
+    z-index: 10;
+}
+
+/* ========== Lanyard 挂绳卡区域 ========== */
+.lanyard-section {
+    display: flex; justify-content: center;
+    margin-bottom: 48px;
+    perspective: 1600px;
+}
+
+.lanyard-wrapper {
+    position: relative;
+    transform-style: preserve-3d;
+    animation: lanyardFloat 6s ease-in-out infinite;
+}
+@keyframes lanyardFloat {
+    0%, 100% { transform: rotateX(4deg) rotateY(-6deg) translateY(0); }
+    50% { transform: rotateX(2deg) rotateY(-4deg) translateY(-10px); }
+}
+
+/* 挂绳 */
+.lanyard-rope {
+    position: absolute;
+    top: -120px; left: 50%;
+    width: 320px; height: 160px;
+    transform: translateX(-50%);
+    border: 3px solid transparent;
+    border-top: 3px solid;
+    border-left: 3px solid;
+    border-right: 3px solid;
+    border-radius: 160px 160px 0 0;
+    border-image: linear-gradient(180deg, #0d9488, #06b6d4, #06b6d4) 1;
+    opacity: 0.7;
+    z-index: -1;
+    filter: drop-shadow(0 4px 12px rgba(13,148,136,0.4));
+}
+.lanyard-rope::before {
+    content: '';
+    position: absolute;
+    top: -3px; left: -3px; right: -3px; bottom: 0;
+    border: 3px solid transparent;
+    border-top: 3px solid #0d9488;
+    border-left: 3px solid #06b6d4;
+    border-right: 3px solid #06b6d4;
+    border-radius: 160px 160px 0 0;
+    filter: blur(8px);
+    opacity: 0.5;
+}
+
+/* 挂扣 */
+.lanyard-clip {
+    position: absolute;
+    top: -28px; left: 50%;
+    transform: translateX(-50%);
+    width: 40px; height: 28px;
+    background: linear-gradient(135deg, #2dd4bf, #0d9488);
+    border-radius: 8px 8px 12px 12px;
+    box-shadow: 0 4px 16px rgba(13,148,136,0.5);
+    z-index: 2;
+}
+.lanyard-clip::before {
+    content: '';
+    position: absolute;
+    top: -10px; left: 50%;
+    transform: translateX(-50%);
+    width: 20px; height: 12px;
+    border: 3px solid #2dd4bf;
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
+}
+
+/* Lanyard 主卡片 */
+.lanyard-card {
+    width: 480px;
+    background: linear-gradient(145deg, rgba(30,41,59,0.85), rgba(15,23,42,0.95));
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(45,212,191,0.25);
+    border-radius: 24px;
+    padding: 32px;
+    position: relative;
+    box-shadow:
+        0 30px 80px rgba(0,0,0,0.5),
+        0 0 60px rgba(13,148,136,0.15),
+        inset 0 1px 0 rgba(255,255,255,0.08);
+    transform-style: preserve-3d;
+}
+.lanyard-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(45,212,191,0.6), transparent);
+}
+.lanyard-card::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(
+        circle at var(--mx, 50%) var(--my, 30%),
+        rgba(45,212,191,0.15) 0%,
+        transparent 50%
+    );
+    border-radius: 24px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .3s ease;
+}
+.lanyard-card:hover::after { opacity: 1; }
+
+/* 卡片打孔 */
+.card-hole {
+    position: absolute;
+    top: 16px; left: 50%;
+    transform: translateX(-50%);
+    width: 36px; height: 20px;
+    background: #070d18;
+    border-radius: 50%;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.8);
+    z-index: 3;
+}
+
+.lc-header {
+    text-align: center;
+    margin-bottom: 24px;
+    padding-top: 16px;
+}
+.lc-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 16px;
+    background: rgba(13,148,136,0.15);
+    border: 1px solid rgba(45,212,191,0.4);
+    border-radius: 100px;
+    font-size: 12px; font-weight: 600;
+    color: #5eead4;
+    margin-bottom: 16px;
+    animation: badgeGlow 2s ease-in-out infinite;
+}
+@keyframes badgeGlow {
+    0%, 100% { box-shadow: 0 0 15px rgba(13,148,136,0.3); }
+    50% { box-shadow: 0 0 30px rgba(13,148,136,0.5); }
+}
+.lc-badge::before {
+    content: '';
+    width: 7px; height: 7px;
+    background: #34d399;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #34d399;
+    animation: livePulse 1.5s ease-in-out infinite;
+}
+@keyframes livePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.lc-title {
+    font-size: 28px; font-weight: 800;
+    background: linear-gradient(135deg, #fff 0%, #2dd4bf 50%, #38bdf8 100%);
+    background-size: 200% 200%;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: gradientFlow 4s ease infinite;
+    margin-bottom: 6px;
+}
+@keyframes gradientFlow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+.lc-subtitle { font-size: 13px; color: #94a3b8; }
+
+.lc-probability {
+    text-align: center;
+    margin: 24px 0;
+    padding: 20px;
+    background: linear-gradient(135deg, rgba(13,148,136,0.12), rgba(8,145,178,0.08));
+    border-radius: 16px;
+    border: 1px solid rgba(45,212,191,0.22);
+    position: relative;
+    overflow: hidden;
+}
+.lc-probability::before {
+    content: '';
+    position: absolute;
+    top: -50%; right: -30%;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(13,148,136,0.2) 0%, transparent 60%);
+}
+.lc-prob-label { font-size: 12px; color: #5eead4; margin-bottom: 8px; }
+.lc-prob-value {
+    font-size: 56px; font-weight: 900;
+    background: linear-gradient(135deg, #fff, #2dd4bf, #38bdf8);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+    letter-spacing: -2px;
+}
+.lc-prob-desc { font-size: 11px; color: #64748b; margin-top: 8px; }
+
+.lc-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.lc-info-item {
+    background: rgba(15,23,42,0.6);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 12px;
+    padding: 12px;
+}
+.lc-info-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+.lc-info-value { font-size: 13px; font-weight: 600; color: #e2e8f0; word-break: break-all; }
+
+.lc-footer {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+}
+.lc-report-id { font-size: 11px; color: #475569; font-family: 'Courier New', monospace; }
+.lc-model-tag {
+    font-size: 10px; font-weight: 600;
+    padding: 4px 10px;
+    background: rgba(45,212,191,0.15);
+    border: 1px solid rgba(45,212,191,0.3);
+    border-radius: 100px;
+    color: #5eead4;
+}
+
+/* ========== 报告正文区 ========== */
+.report-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+}
+
+.report-section {
+    background: rgba(15,23,42,0.4);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 20px;
+    padding: 28px;
+    margin-bottom: 24px;
+}
+
+.section-header {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 20px;
+}
+.section-icon {
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+.section-icon.purple { background: linear-gradient(135deg, #0d9488, #06b6d4); }
+.section-icon.red { background: linear-gradient(135deg, #ef4444, #06b6d4); }
+.section-icon.green { background: linear-gradient(135deg, #06b6d4, #22d3ee); }
+.section-icon.amber { background: linear-gradient(135deg, #f59e0b, #ef4444); }
+.section-icon.blue { background: linear-gradient(135deg, #06b6d4, #38bdf8); }
+
+.section-title {
+    font-size: 17px; font-weight: 700; color: #f1f5f9;
+}
+.section-subtitle { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+/* 诊断描述 */
+.diagnosis-text {
+    font-size: 13.5px;
+    color: #cbd5e1;
+    line-height: 1.85;
+}
+.diagnosis-text p { margin-bottom: 14px; }
+.diagnosis-text p:last-child { margin-bottom: 0; }
+.diagnosis-text .highlight {
+    color: #fca5a5;
+    font-weight: 600;
+    background: rgba(239,68,68,0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.diagnosis-text .highlight-green {
+    color: #86efac;
+    font-weight: 600;
+}
+
+/* Markdown 报告渲染 */
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+    color: #f1f5f9; margin: 18px 0 10px; font-weight: 700; line-height: 1.4;
+}
+.markdown-body h1 { font-size: 20px; }
+.markdown-body h2 { font-size: 17px; border-left: 3px solid #06b6d4; padding-left: 10px; }
+.markdown-body h3 { font-size: 15px; }
+.markdown-body h4 { font-size: 13.5px; }
+.markdown-body ul, .markdown-body ol { padding-left: 22px; margin-bottom: 14px; }
+.markdown-body li { margin-bottom: 6px; line-height: 1.7; }
+.markdown-body strong { color: #f1f5f9; font-weight: 700; }
+.markdown-body table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 12.5px; }
+.markdown-body th, .markdown-body td { border: 1px solid rgba(255,255,255,0.08); padding: 8px 10px; text-align: left; }
+.markdown-body th { background: rgba(13,148,136,0.12); color: #e2e8f0; }
+.markdown-body code { background: rgba(13,148,136,0.15); padding: 2px 6px; border-radius: 4px; font-size: 12px; font-family: 'Courier New', monospace; }
+.markdown-body blockquote { border-left: 3px solid rgba(45,212,191,0.4); padding-left: 12px; color: #94a3b8; margin: 12px 0; }
+.markdown-body hr { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 18px 0; }
+.markdown-body a { color: #5eead4; }
+
+/* 空状态 */
+.report-empty { text-align: center; padding: 48px 20px; }
+.report-empty-icon { font-size: 42px; margin-bottom: 14px; opacity: 0.6; }
+.report-empty-title { font-size: 16px; font-weight: 700; color: #94a3b8; margin-bottom: 8px; }
+.report-empty-desc { font-size: 12.5px; color: #64748b; line-height: 1.7; }
+.report-empty-desc a { color: #5eead4; text-decoration: none; }
+.report-empty-desc a:hover { text-decoration: underline; }
+
+/* 置信度面板 */
+.confidence-panel {
+    text-align: center;
+    padding: 20px;
+    background: linear-gradient(135deg, rgba(13,148,136,0.15), rgba(8,145,178,0.1));
+    border-radius: 16px;
+    border: 1px solid rgba(45,212,191,0.2);
+    margin-bottom: 20px;
+}
+.confidence-value {
+    font-size: 42px; font-weight: 900;
+    background: linear-gradient(135deg, #fff, #5eead4);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+}
+.confidence-label { font-size: 12px; color: #94a3b8; margin-top: 6px; }
+
+/* 指标块 */
+.metric-blocks {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.metric-block {
+    background: rgba(30,41,59,0.5);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 12px;
+    padding: 14px;
+    text-align: center;
+}
+.metric-block-value {
+    font-size: 20px; font-weight: 800;
+    color: #e2e8f0;
+    line-height: 1;
+}
+.metric-block-label {
+    font-size: 10px;
+    color: #64748b;
+    margin-top: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* 建议区 */
+.recommendation {
+    background: linear-gradient(135deg, rgba(6,182,212,0.1), rgba(6,182,212,0.08));
+    border: 1px solid rgba(34,211,238,0.25);
+    border-radius: 14px;
+    padding: 18px;
+}
+.rec-title {
+    font-size: 13px; font-weight: 700; color: #6ee7b7;
+    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+}
+.rec-list { list-style: none; }
+.rec-list li {
+    font-size: 12.5px; color: #cbd5e1;
+    padding: 5px 0;
+    display: flex; gap: 8px;
+    line-height: 1.6;
+}
+.rec-list li::before {
+    content: '→';
+    color: #4ade80;
+    flex-shrink: 0;
+}
+
+/* 操作按钮区 */
+.report-actions {
+    display: flex; gap: 12px;
+    margin-top: 24px;
+}
+.action-btn {
+    flex: 1;
+    padding: 14px;
+    border-radius: 12px;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .3s ease;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-family: inherit;
+}
+.action-btn.primary {
+    background: linear-gradient(135deg, #0d9488, #06b6d4);
+    color: white;
+    box-shadow: 0 4px 20px rgba(13,148,136,0.4);
+}
+.action-btn.primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(13,148,136,0.55);
+}
+.action-btn.secondary {
+    background: rgba(30,41,59,0.6);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #cbd5e1;
+}
+.action-btn.secondary:hover {
+    border-color: rgba(45,212,191,0.3);
+    color: white;
+    background: rgba(45,212,191,0.1);
+}
+
+@media (max-width: 1100px) {
+    .report-grid { grid-template-columns: 1fr; }
+}
+
+/* 打印 / 导出 PDF */
+@media print {
+    .sidebar, .bg-container, .report-actions, .lanyard-section { display: none !important; }
+    body { background: #fff; color: #111; }
+    .main-content { margin-left: 0; padding: 0; max-width: none; }
+    .report-section {
+        background: #fff; border: none; box-shadow: none;
+        backdrop-filter: none; -webkit-backdrop-filter: none;
+        padding: 0;
+    }
+    .section-title, .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4,
+    .markdown-body strong { color: #111; -webkit-text-fill-color: #111; }
+    .section-subtitle { color: #555; }
+    .diagnosis-text, .markdown-body, .markdown-body li { color: #222; }
+    .markdown-body th { background: #f1f5f9; color: #111; }
+    .markdown-body th, .markdown-body td { border-color: #cbd5e1; }
+    .markdown-body code { background: #f1f5f9; color: #111; }
+    .markdown-body blockquote { color: #555; border-left-color: #94a3b8; }
+    .markdown-body h2 { border-left-color: #0d9488; }
+}
+</style>
+</head>
+<body>
+<script>(function(){function c(){try{['patho_auth','patho_auth_ts','patho_user','patho_boot_id'].forEach(function(k){localStorage.removeItem(k);});}catch(e){}}function a(){try{if(localStorage.getItem('patho_auth')!=='1')return false;var t=parseInt(localStorage.getItem('patho_auth_ts')||'0',10);if(!t||Date.now()-t>7*24*3600*1e3){c();return false;}return true;}catch(e){return false;}}function g(n){fetch('/patho-cot/api/boot-id',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(d){var s=null;try{s=localStorage.getItem('patho_boot_id');}catch(e){}if(d&&s&&d.bootId!==s){c();location.replace('/patho-cot/');return;}n();}).catch(function(){n();});}if(!a()){location.replace('/patho-cot/');return;}g(function(){});})();</script>
+
+<!-- 背景 -->
+<div class="bg-container">
+    <div class="bg-base"></div>
+    <div class="bg-noise"></div>
+</div>
+
+<!-- 侧边栏 -->
+<aside class="sidebar">
+    <div class="sidebar-logo">
+        <div class="sidebar-logo-icon">P</div>
+        <div class="sidebar-logo-text">
+            <h1>Patho-COT</h1>
+            <p>AI 诊断报告</p>
+        </div>
+    </div>
+    <div class="sidebar-nav">
+        <div class="gooey-nav" id="homeNav">
+            <a href="/patho-cot/dashboard" class="nav-item" data-index="0">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/patho-cot/></svg>
+                总览仪表盘
+            </a>
+        </div>
+        <div class="nav-section-label" style="margin-top:14px;">诊断流程</div>
+        <div class="gooey-nav" id="mainNav">
+            <a href="/patho-cot/diagnose/1" class="nav-item" data-index="0">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/patho-cot/></svg>
+                分步诊断
+            </a>
+            <a href="/patho-cot/multi" class="nav-item" data-index="1">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/patho-cot/></svg>
+                多图分析
+            </a>
+        </div>
+        <div class="nav-section-label" style="margin-top:20px;">数据中心</div>
+        <div class="gooey-nav" id="dataNav">
+            <a href="/patho-cot/history" class="nav-item" data-index="0" style="padding: 10px 14px;">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/patho-cot/></svg>
+                诊断历史
+            </a>
+            <a href="/patho-cot/datasets" class="nav-item" data-index="1" style="padding: 10px 14px;">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/patho-cot/></svg>
+                数据集
+            </a>
+        </div>
+        <div class="nav-section-label" style="margin-top:20px;">系统</div>
+        <div class="gooey-nav" id="sysNav">
+            <a href="/patho-cot/models" class="nav-item" data-index="0">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/patho-cot/></svg>
+                模型与部署
+            </a>
+        </div>
+    </div>
+    </aside>
+
+<!-- 主内容 -->
+<main class="main-content">
+
+    <!-- Lanyard 挂绳卡 -->
+    <div class="lanyard-section">
+        <div class="lanyard-wrapper" id="lanyardCard">
+            <div class="lanyard-rope"></div>
+            <div class="lanyard-clip"></div>
+            <div class="lanyard-card">
+                <div class="card-hole"></div>
+                <div class="lc-header">
+                    <div class="lc-badge" id="lcBadge">AI 诊断报告</div>
+                    <div class="lc-title" id="lcTitle">最新诊断报告</div>
+                    <div class="lc-subtitle" id="lcSubtitle">Patho-COT 辅助诊断 · 需病理医师复核确认</div>
+                </div>
+
+                <div class="lc-probability">
+                    <div class="lc-prob-label">Patho-COT</div>
+                    <div class="lc-prob-value" style="font-size:40px;letter-spacing:0;">AI</div>
+                    <div class="lc-prob-desc">基于 Patho-COT 模型链式思维推理分析</div>
+                </div>
+
+                <div class="lc-info">
+                    <div class="lc-info-item">
+                        <div class="lc-info-label">样本文件</div>
+                        <div class="lc-info-value" id="lcFilename">—</div>
+                    </div>
+                    <div class="lc-info-item">
+                        <div class="lc-info-label">识别模式</div>
+                        <div class="lc-info-value" id="lcMode">—</div>
+                    </div>
+                    <div class="lc-info-item">
+                        <div class="lc-info-label">报告时间</div>
+                        <div class="lc-info-value" id="lcTime">—</div>
+                    </div>
+                    <div class="lc-info-item">
+                        <div class="lc-info-label">备注说明</div>
+                        <div class="lc-info-value" id="lcDesc">—</div>
+                    </div>
+                </div>
+
+                <div class="lc-footer">
+                    <span class="lc-report-id" id="lcReportId">—</span>
+                    <span class="lc-model-tag">Patho-COT</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 报告正文 -->
+    <div class="report-grid">
+        <div>
+            <!-- AI 诊断报告（动态渲染） -->
+            <div class="report-section">
+                <div class="section-header">
+                    <div class="section-icon red">📋</div>
+                    <div>
+                        <div class="section-title">AI 诊断报告</div>
+                        <div class="section-subtitle" id="reportSubtitle">正在加载最新诊断报告…</div>
+                    </div>
+                </div>
+                <div class="diagnosis-text markdown-body" id="reportContent">
+                    <p style="color:#64748b;">正在加载最新诊断报告…</p>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <!-- 置信度总览 -->
+            <div class="report-section">
+                <div class="section-header">
+                    <div class="section-icon purple">📊</div>
+                    <div>
+                        <div class="section-title">置信度分析</div>
+                        <div class="section-subtitle">模型输出置信度</div>
+                    </div>
+                </div>
+                <div class="confidence-panel">
+                    <div class="confidence-value">92.4%</div>
+                    <div class="confidence-label">综合诊断置信度</div>
+                </div>
+                <div class="metric-blocks">
+                    <div class="metric-block">
+                        <div class="metric-block-value" style="color:#f87171;">98.6%</div>
+                        <div class="metric-block-label">肿瘤检测</div>
+                    </div>
+                    <div class="metric-block">
+                        <div class="metric-block-value" style="color:#2dd4bf;">94.3%</div>
+                        <div class="metric-block-label">分型准确率</div>
+                    </div>
+                    <div class="metric-block">
+                        <div class="metric-block-value" style="color:#22d3ee;">89.7%</div>
+                        <div class="metric-block-label">分期预测</div>
+                    </div>
+                    <div class="metric-block">
+                        <div class="metric-block-value" style="color:#4ade80;">96.8%</div>
+                        <div class="metric-block-label">切缘评估</div>
+                    </div>
+                </div>
+                <canvas id="radarChart" height="200"></canvas>
+            </div>
+
+            <!-- 临床建议 -->
+            <div class="report-section">
+                <div class="section-header">
+                    <div class="section-icon green">💊</div>
+                    <div>
+                        <div class="section-title">临床建议</div>
+                        <div class="section-subtitle">AI 辅助建议 · 仅供参考</div>
+                    </div>
+                </div>
+                <div class="recommendation">
+                    <div class="rec-title">⚡ 建议尽快处理</div>
+                    <ul class="rec-list">
+                        <li>建议完善胸腹盆增强 CT 评估临床分期</li>
+                        <li>建议检测 MMR/MSI 状态指导治疗方案选择</li>
+                        <li>建议行 KRAS/NRAS/BRAF 基因突变检测</li>
+                        <li>建议多学科会诊（MDT）制定综合治疗方案</li>
+                        <li>建议首选手术治疗，术后根据病理分期决定辅助化疗</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="report-actions" style="flex-direction:column;">
+                <button class="action-btn primary" id="btnCopy">
+                    📋 复制报告
+                </button>
+                <button class="action-btn secondary" id="btnPrint">
+                    🖨 打印报告
+                </button>
+                <button class="action-btn secondary" id="btnPdf">
+                    📥 导出 PDF
+                </button>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script src="/patho-cot/static/assets/bg-animated.js?v=G1"></script>
+<script src="/patho-cot/static/assets/rb-effects.js?v=G2"></script>
+<script>
+var currentReport = '';
+
+function modeLabel(m) {
+    if (m === 'single') return '单图识别';
+    if (m === 'multi') return '多图识别';
+    return m || '—';
+}
+
+function renderEmptyState() {
+    var el = document.getElementById('reportContent');
+    el.innerHTML =
+        '<div class="report-empty">' +
+            '<div class="report-empty-icon">📄</div>' +
+            '<div class="report-empty-title">暂无诊断报告</div>' +
+            '<div class="report-empty-desc">尚未生成任何 AI 诊断报告，请先前往' +
+            '<a href="/patho-cot/diagnose/1">分步诊断</a> 或 <a href="/patho-cot/multi">多图分析</a> 完成一次诊断后再来查看。</div>' +
+        '</div>';
+    document.getElementById('reportSubtitle').textContent = '暂无数据';
+}
+
+function loadLatestReport() {
+    fetch('/patho-cot/api/latest-report')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data || !data.found || !data.report) {
+                renderEmptyState();
+                return;
+            }
+            currentReport = data.report;
+
+            // 渲染 Markdown 报告
+            var el = document.getElementById('reportContent');
+            if (typeof marked !== 'undefined') {
+                el.innerHTML = marked.parse(data.report);
+            } else {
+                el.textContent = data.report;
+            }
+            document.getElementById('reportSubtitle').textContent =
+                'AI 辅助诊断 · 需病理医师复核确认';
+
+            // Lanyard 卡片元信息
+            document.getElementById('lcBadge').textContent = modeLabel(data.mode) + ' · 已完成';
+            document.getElementById('lcTitle').textContent = data.filename || 'AI 诊断报告';
+            document.getElementById('lcSubtitle').textContent =
+                data.description || 'Patho-COT 辅助诊断 · 需病理医师复核确认';
+            document.getElementById('lcFilename').textContent = data.filename || '—';
+            document.getElementById('lcMode').textContent = modeLabel(data.mode);
+            document.getElementById('lcTime').textContent = data.created_at || '—';
+            document.getElementById('lcDesc').textContent = data.description || '—';
+            document.getElementById('lcReportId').textContent =
+                data.id ? ('RPT-' + String(data.id).padStart(6, '0')) : '—';
+        })
+        .catch(function () {
+            renderEmptyState();
+        });
+}
+
+function fallbackCopy(text, onDone) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    if (onDone) onDone();
+}
+
+// GooeyNav 已在 base.html 全局初始化，此处不再重复 new（否则双胶囊重叠）
+document.addEventListener('DOMContentLoaded', function () {
+    var lanyard = document.getElementById('lanyardCard');
+    var card = lanyard.querySelector('.lanyard-card');
+    var wrapper = lanyard;
+
+    card.addEventListener('mousemove', function(e) {
+        var rect = card.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var y = e.clientY - rect.top;
+        var cx = rect.width / 2;
+        var cy = rect.height / 2;
+        var rx = (y - cy) / cy * -6;
+        var ry = (x - cx) / cx * 8;
+
+        card.style.setProperty('--mx', (x / rect.width * 100) + '%');
+        card.style.setProperty('--my', (y / rect.height * 100) + '%');
+
+        // 保持基础浮动 + 鼠标倾斜
+        wrapper.style.animation = 'none';
+        wrapper.style.transform = 'rotateX(' + (4 + rx) + 'deg) rotateY(' + (-6 + ry) + 'deg)';
+    });
+
+    card.addEventListener('mouseleave', function() {
+        card.style.setProperty('--mx', '50%');
+        card.style.setProperty('--my', '30%');
+        wrapper.style.animation = '';
+        wrapper.style.transform = '';
+    });
+
+    // 雷达图
+    var ctx = document.getElementById('radarChart');
+    if (ctx && window.Chart) {
+        new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['肿瘤检测', '细胞分类', '分型诊断', '分期预测', '切缘评估', '生存预测'],
+                datasets: [{
+                    label: 'Patho-COT',
+                    data: [98.6, 97.2, 94.3, 89.7, 96.8, 87.5],
+                    backgroundColor: 'rgba(45, 212, 191, 0.2)',
+                    borderColor: '#2dd4bf',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#2dd4bf',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    r: {
+                        angleLines: { color: 'rgba(255,255,255,0.06)' },
+                        grid: { color: 'rgba(255,255,255,0.06)' },
+                        pointLabels: { color: '#94a3b8', font: { size: 10 } },
+                        ticks: { display: false, stepSize: 20 },
+                        suggestedMin: 60,
+                        suggestedMax: 100
+                    }
+                }
+            }
+        });
+    }
+
+    // 加载最新诊断报告
+    loadLatestReport();
+
+    // 复制报告
+    var btnCopy = document.getElementById('btnCopy');
+    btnCopy.addEventListener('click', function () {
+        if (!currentReport) {
+            alert('暂无诊断报告可复制');
+            return;
+        }
+        var original = btnCopy.innerHTML;
+        var done = function () {
+            btnCopy.innerHTML = '✓ 已复制到剪贴板';
+            setTimeout(function () { btnCopy.innerHTML = original; }, 1600);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(currentReport).then(done).catch(function () {
+                fallbackCopy(currentReport, done);
+            });
+        } else {
+            fallbackCopy(currentReport, done);
+        }
+    });
+
+    // 打印报告
+    document.getElementById('btnPrint').addEventListener('click', function () {
+        if (!currentReport) {
+            alert('暂无诊断报告可打印');
+            return;
+        }
+        window.print();
+    });
+
+    // 导出 PDF（通过浏览器打印为 PDF）
+    document.getElementById('btnPdf').addEventListener('click', function () {
+        if (!currentReport) {
+            alert('暂无诊断报告可导出');
+            return;
+        }
+        window.print();
+    });
+});
+</script>
+</body>
+</html>

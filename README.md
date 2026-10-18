@@ -2,7 +2,7 @@
 
 Patho-COT 是一个面向科研和教学演示的病理图像分析系统。它使用 FastAPI 提供 Web 界面，将图像质量检测、器官分类、细胞检测、病变性质判定、组织亚型分类和中文报告生成串联为六步流程。
 
-**在线项目展示：** <https://fanlin455.github.io/patho-cot/>
+**在线原版项目界面：** <https://fanlin455.github.io/patho-cot/>
 
 > 医疗声明：本项目仅用于科研、教学与技术演示，不可替代病理医师的专业诊断。请勿向公开演示环境上传可识别患者身份的数据。
 
@@ -17,7 +17,7 @@ Patho-COT 是一个面向科研和教学演示的病理图像分析系统。它�
 
 ## GitHub Pages 与完整后端的区别
 
-`docs/` 是可直接托管在 GitHub Pages 的静态展示站。GitHub Pages 不运行 Python、FastAPI、CUDA 或模型推理，因此线上页面用于介绍和界面预览，不提供真实诊断。
+`docs/` 由 `scripts/export_github_pages.py` 直接从项目原有的 Jinja 模板和静态资源导出，包含原版入口、仪表盘、六步诊断、多图分析、数据集、模型、报告和 3D 浏览器界面。GitHub Pages 不运行 Python、FastAPI、CUDA 或模型推理，因此页面中需要 `/api/*` 后端的真实诊断功能不会在 GitHub Pages 上执行。
 
 完整后端需要：
 
